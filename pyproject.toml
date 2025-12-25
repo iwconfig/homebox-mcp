@@ -1,0 +1,19 @@
+[project]
+name = "homebox-mcp"
+version = "0.1.0"
+description = "MCP server for Homebox inventory management system"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp",
+    "httpx",
+    "python-dotenv",
+    "pydantic"
+]
+
+[project.scripts]
+homebox-mcp = "homebox_mcp.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

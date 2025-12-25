@@ -1,0 +1,74 @@
+POST /v1/actions/create-missing-thumbnails | Create Missing Thumbnails | Res: 200 application/json v1.ActionAmountResult
+POST /v1/actions/ensure-asset-ids | Ensure Asset IDs | Res: 200 application/json v1.ActionAmountResult
+POST /v1/actions/ensure-import-refs | Ensures Import Refs | Res: 200 application/json v1.ActionAmountResult
+POST /v1/actions/set-primary-photos | Set Primary Photos | Res: 200 application/json v1.ActionAmountResult
+POST /v1/actions/zero-item-time-fields | Zero Out Time Fields | Res: 200 application/json v1.ActionAmountResult
+GET /v1/assets/{id} | Get Item by Asset ID | Res: 200 application/json repo.PaginationResult-repo_ItemSummary
+GET /v1/currency | Currency | Res: 200 application/json currencies.Currency
+GET /v1/groups | Get Group | Res: 200 application/json repo.Group
+PUT /v1/groups | Update Group | Req: application/json repo.GroupUpdate | Res: 200 application/json repo.Group
+POST /v1/groups/invitations | Create Group Invitation | Req: application/json v1.GroupInvitationCreate | Res: 200 application/json v1.GroupInvitation
+GET /v1/groups/statistics | Get Group Statistics | Res: 200 application/json repo.GroupStatistics
+GET /v1/groups/statistics/labels | Get Label Statistics | Res: 200 application/json {"type":"array","items":{"$ref":"#/components/schemas/repo.TotalsByOrganizer"}}
+GET /v1/groups/statistics/locations | Get Location Statistics | Res: 200 application/json {"type":"array","items":{"$ref":"#/components/schemas/repo.TotalsByOrganizer"}}
+GET /v1/groups/statistics/purchase-price | Get Purchase Price Statistics | Res: 200 application/json repo.ValueOverTime
+GET /v1/items | Query All Items | Res: 200 application/json repo.PaginationResult-repo_ItemSummary
+POST /v1/items | Create Item | Req: application/json repo.ItemCreate | Res: 201 application/json repo.ItemSummary
+GET /v1/items/export | Export Items | Res: 200 */* {"type":"string"}
+GET /v1/items/fields | Get All Custom Field Names | Res: 200 application/json {"type":"array","items":{"type":"string"}}
+GET /v1/items/fields/values | Get All Custom Field Values | Res: 200 application/json {"type":"array","items":{"type":"string"}}
+POST /v1/items/import | Import Items | Req: multipart/form-data {"type":"object","properties":{"csv":{"description":"Image to upload","type":"string","format":"binary"}},"required":["csv"]} | Res: 204 no-content null
+GET /v1/items/{id} | Get Item | Res: 200 application/json repo.ItemOut
+PUT /v1/items/{id} | Update Item | Req: application/json repo.ItemUpdate | Res: 200 application/json repo.ItemOut
+DELETE /v1/items/{id} | Delete Item | Res: 204 no-content null
+PATCH /v1/items/{id} | Update Item | Req: application/json repo.ItemPatch | Res: 200 application/json repo.ItemOut
+POST /v1/items/{id}/attachments | Create Item Attachment | Req: multipart/form-data {"type":"object","properties":{"file":{"description":"File attachment","type":"string","format":"binary"},"type":{"description":"Type of file","type":"string"},"primary":{"description":"Is this the primary attachment","type":"boolean"},"name":{"description":"name of the file including extension","type":"string"}},"required":["file","name"]} | Res: 200 application/json repo.ItemOut | Res: 422 application/json validate.ErrorResponse
+GET /v1/items/{id}/attachments/{attachment_id} | Get Item Attachment | Res: 200 application/octet-stream v1.ItemAttachmentToken
+PUT /v1/items/{id}/attachments/{attachment_id} | Update Item Attachment | Req: application/json repo.ItemAttachmentUpdate | Res: 200 */* repo.ItemOut
+DELETE /v1/items/{id}/attachments/{attachment_id} | Delete Item Attachment | Res: 204 no-content null
+POST /v1/items/{id}/duplicate | Duplicate Item | Req: application/json repo.DuplicateOptions | Res: 201 application/json repo.ItemOut
+GET /v1/items/{id}/maintenance | Get Maintenance Log | Res: 200 application/json {"type":"array","items":{"$ref":"#/components/schemas/repo.MaintenanceEntryWithDetails"}}
+POST /v1/items/{id}/maintenance | Create Maintenance Entry | Req: application/json repo.MaintenanceEntryCreate | Res: 201 application/json repo.MaintenanceEntry
+GET /v1/items/{id}/path | Get the full path of an item | Res: 200 application/json {"type":"array","items":{"$ref":"#/components/schemas/repo.ItemPath"}}
+GET /v1/labelmaker/assets/{id} | Get Asset label | Res: 200 application/json {"type":"string"}
+GET /v1/labelmaker/item/{id} | Get Item label | Res: 200 application/json {"type":"string"}
+GET /v1/labelmaker/location/{id} | Get Location label | Res: 200 application/json {"type":"string"}
+GET /v1/labels | Get All Labels | Res: 200 application/json {"type":"array","items":{"$ref":"#/components/schemas/repo.LabelOut"}}
+POST /v1/labels | Create Label | Req: application/json repo.LabelCreate | Res: 200 application/json repo.LabelSummary
+GET /v1/labels/{id} | Get Label | Res: 200 application/json repo.LabelOut
+PUT /v1/labels/{id} | Update Label | Res: 200 application/json repo.LabelOut
+DELETE /v1/labels/{id} | Delete Label | Res: 204 no-content null
+GET /v1/locations | Get All Locations | Res: 200 application/json {"type":"array","items":{"$ref":"#/components/schemas/repo.LocationOutCount"}}
+POST /v1/locations | Create Location | Req: application/json repo.LocationCreate | Res: 200 application/json repo.LocationSummary
+GET /v1/locations/tree | Get Locations Tree | Res: 200 application/json {"type":"array","items":{"$ref":"#/components/schemas/repo.TreeItem"}}
+GET /v1/locations/{id} | Get Location | Res: 200 application/json repo.LocationOut
+PUT /v1/locations/{id} | Update Location | Req: application/json repo.LocationUpdate | Res: 200 application/json repo.LocationOut
+DELETE /v1/locations/{id} | Delete Location | Res: 204 no-content null
+GET /v1/maintenance | Query All Maintenance | Res: 200 application/json {"type":"array","items":{"$ref":"#/components/schemas/repo.MaintenanceEntryWithDetails"}}
+PUT /v1/maintenance/{id} | Update Maintenance Entry | Req: application/json repo.MaintenanceEntryUpdate | Res: 200 application/json repo.MaintenanceEntry
+DELETE /v1/maintenance/{id} | Delete Maintenance Entry | Res: 204 no-content null
+GET /v1/notifiers | Get Notifiers | Res: 200 application/json {"type":"array","items":{"$ref":"#/components/schemas/repo.NotifierOut"}}
+POST /v1/notifiers | Create Notifier | Req: application/json repo.NotifierCreate | Res: 200 application/json repo.NotifierOut
+POST /v1/notifiers/test | Test Notifier | Res: 204 no-content null
+PUT /v1/notifiers/{id} | Update Notifier | Req: application/json repo.NotifierUpdate | Res: 200 */* repo.NotifierOut
+DELETE /v1/notifiers/{id} | Delete a Notifier | Res: 204 no-content null
+GET /v1/products/search-from-barcode | Search EAN from Barcode | Res: 200 application/json {"type":"array","items":{"$ref":"#/components/schemas/repo.BarcodeProduct"}}
+GET /v1/qrcode | Create QR Code | Res: 200 application/json {"type":"string"}
+GET /v1/reporting/bill-of-materials | Export Bill of Materials | Res: 200 application/json {"type":"string"}
+GET /v1/status | Application Info | Res: 200 application/json v1.APISummary
+GET /v1/templates | Get All Item Templates | Res: 200 application/json {"type":"array","items":{"$ref":"#/components/schemas/repo.ItemTemplateSummary"}}
+POST /v1/templates | Create Item Template | Req: application/json repo.ItemTemplateCreate | Res: 201 application/json repo.ItemTemplateOut
+GET /v1/templates/{id} | Get Item Template | Res: 200 application/json repo.ItemTemplateOut
+PUT /v1/templates/{id} | Update Item Template | Req: application/json repo.ItemTemplateUpdate | Res: 200 application/json repo.ItemTemplateOut
+DELETE /v1/templates/{id} | Delete Item Template | Res: 204 no-content null
+POST /v1/templates/{id}/create-item | Create Item from Template | Req: application/json v1.ItemTemplateCreateItemRequest | Res: 201 application/json repo.ItemOut
+PUT /v1/users/change-password | Change Password | Req: application/json v1.ChangePassword | Res: 204 no-content null
+POST /v1/users/login | User Login | Req: application/x-www-form-urlencoded v1.LoginForm | Req: application/json v1.LoginForm | Res: 200 application/json v1.TokenResponse
+GET /v1/users/login/oidc | OIDC Login Initiation | Res: 302 no-content null
+GET /v1/users/login/oidc/callback | OIDC Callback Handler | Res: 302 no-content null
+POST /v1/users/logout | User Logout | Res: 204 no-content null
+GET /v1/users/refresh | User Token Refresh | Res: 200 no-content null
+POST /v1/users/register | Register New User | Req: application/json services.UserRegistration | Res: 204 no-content null | Res: 403 application/json {"type":"string"}
+GET /v1/users/self | Get User Self | Res: 200 application/json {"allOf":[{"$ref":"#/components/schemas/v1.Wrapped"},{"type":"object","properties":{"item":{"$ref":"#/components/schemas/repo.UserOut"}}}]}
+PUT /v1/users/self | Update Account | Req: application/json repo.UserUpdate | Res: 200 application/json {"allOf":[{"$ref":"#/components/schemas/v1.Wrapped"},{"type":"object","properties":{"item":{"$ref":"#/components/schemas/repo.UserUpdate"}}}]}
+DELETE /v1/users/self | Delete Account | Res: 204 no-content null
