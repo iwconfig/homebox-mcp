@@ -17,6 +17,13 @@ Create a fully fledged MCP server for Homebox in Python, covering all API endpoi
 - 100% API coverage.
 - Code is DRY and efficient.
 
+## Date: 2025-12-26
+
+### Feature: Safe User Deletion & Auth Tools
+- Updated `delete_user_self` tool to prevent accidental deletion of the primary environment-defined user or API key user.
+- Added `login_user` and `logout_user` tools to allow dynamic user switching during a session.
+- Added `test_safe_user.py` for verification.
+
 ## Usage
 
 ### Testing with MCP Inspector
@@ -119,12 +126,12 @@ Point your client to `http://localhost:8000/sse`.
 - [x] DELETE /v1/templates/{id}
 - [x] POST /v1/templates/{id}/create-item
 - [x] PUT /v1/users/change-password
-- [x] POST /v1/users/login (Handled by Client)
+- [x] POST /v1/users/login
 - [ ] GET /v1/users/login/oidc (Redirect - Not suitable)
 - [ ] GET /v1/users/login/oidc/callback (Redirect - Not suitable)
-- [x] POST /v1/users/logout (Handled by Client)
+- [x] POST /v1/users/logout
 - [x] GET /v1/users/refresh (Handled by Client)
 - [x] POST /v1/users/register
 - [x] GET /v1/users/self
 - [x] PUT /v1/users/self
-- [x] DELETE /v1/users/self
+- [x] DELETE /v1/users/self (Safe Mode)

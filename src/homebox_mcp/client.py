@@ -22,11 +22,34 @@ class HomeboxClient:
         self.token: Optional[str] = self.api_key
         self.token_expiry: Optional[datetime] = None
         
+        self._load_env_credentials()
+
+        self.client = httpx.AsyncClient(timeout=30.0)
+
+    def _load_env_credentials(self):
+        """Loads credentials from environment variables."""
+        self.api_key = os.getenv("HOMEBOX_API_KEY")
+        self.username = os.getenv("HOMEBOX_USERNAME")
+        self.password = os.getenv("HOMEBOX_PASSWORD")
+        
+        self.token = self.api_key
+        self.token_expiry = None
+        
         # If using API key, set expiry to far future
         if self.api_key:
             self.token_expiry = datetime.now(timezone.utc) + timedelta(days=365*10)
 
-        self.client = httpx.AsyncClient(timeout=30.0)
+    async def login_manual(self, username, password):
+        """Manually log in as a different user."""
+        self.username = username
+        self.password = password
+        self.api_key = None  # Disable API key mode to force Bearer token usage
+        await self.login()
+
+    def logout(self):
+        """Logout and revert to environment credentials."""
+        self._load_env_credentials()
+
 
     @property
     def api_base_url(self) -> str:
