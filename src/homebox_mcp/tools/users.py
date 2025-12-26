@@ -22,7 +22,7 @@ def register_users_tools(mcp: FastMCP, client: HomeboxClient):
     @mcp.tool()
     async def change_password(oldPassword: str, newPassword: str) -> str:
         """Change current user password"""
-        payload = {"oldPassword": oldPassword, "newPassword": newPassword}
+        payload = {"current": oldPassword, "new": newPassword}
         await client.request("PUT", "users/change-password", json=payload)
         return "Password changed successfully"
 
@@ -32,3 +32,9 @@ def register_users_tools(mcp: FastMCP, client: HomeboxClient):
         payload = {"name": name, "email": email, "password": password}
         await client.request("POST", "users/register", json=payload)
         return "User registered successfully"
+
+    @mcp.tool()
+    async def delete_user_self() -> str:
+        """Delete Account"""
+        await client.request("DELETE", "users/self")
+        return "Account deleted successfully"

@@ -15,7 +15,8 @@ def register_maintenance_tools(mcp: FastMCP, client: HomeboxClient):
         id: str,
         name: str = None,
         description: str = None,
-        date: str = None,
+        scheduledDate: str = None,
+        completedDate: str = None,
         cost: float = None,
         itemId: str = None
     ) -> str:
@@ -28,7 +29,8 @@ def register_maintenance_tools(mcp: FastMCP, client: HomeboxClient):
         payload = existing.copy()
         if name: payload["name"] = name
         if description: payload["description"] = description
-        if date: payload["date"] = date
+        if scheduledDate: payload["scheduledDate"] = scheduledDate
+        if completedDate: payload["completedDate"] = completedDate
         if cost is not None: payload["cost"] = cost
         if itemId: payload["itemId"] = itemId
             

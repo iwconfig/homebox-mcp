@@ -20,9 +20,11 @@ def register_groups_tools(mcp: FastMCP, client: HomeboxClient):
         return f"Updated Group: {json.dumps(data, indent=2)}"
 
     @mcp.tool()
-    async def create_group_invitation(email: str, role: str = "user") -> str:
+    async def create_group_invitation(uses: int = 1, expiresAt: str = None) -> str:
         """Create Group Invitation"""
-        data = await client.request("POST", "groups/invitations", json={"email": email, "role": role})
+        payload = {"uses": uses}
+        if expiresAt: payload["expiresAt"] = expiresAt
+        data = await client.request("POST", "groups/invitations", json=payload)
         return f"Created Invitation: {json.dumps(data, indent=2)}"
 
     @mcp.tool()

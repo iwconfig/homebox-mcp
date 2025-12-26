@@ -188,11 +188,18 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         return f"Updated Item: {json.dumps(data, indent=2)}"
 
     @mcp.tool()
-    async def patch_item(id: str, name: str = None, description: str = None) -> str:
-        """Update item with PATCH (partial update)"""
+    async def patch_item(
+        id: str, 
+        locationId: str = None, 
+        quantity: int = None, 
+        labelIds: list[str] = None
+    ) -> str:
+        """Update item with PATCH (partial update). Only supports moving, quantity change, and labels."""
         payload = {}
-        if name: payload["name"] = name
-        if description: payload["description"] = description
+        if locationId: payload["locationId"] = locationId
+        if quantity is not None: payload["quantity"] = quantity
+        if labelIds is not None: payload["labelIds"] = labelIds
+        
         data = await client.request("PATCH", f"items/{id}", json=payload)
         return f"Patched Item: {json.dumps(data, indent=2)}"
 
@@ -227,9 +234,21 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         return json.dumps(data, indent=2)
 
     @mcp.tool()
-    async def duplicate_item(id: str, count: int = 1) -> str:
+    async def duplicate_item(
+        id: str, 
+        copyAttachments: bool = False,
+        copyCustomFields: bool = False,
+        copyMaintenance: bool = False,
+        copyPrefix: str = "Copy of "
+    ) -> str:
         """Duplicate an item"""
-        data = await client.request("POST", f"items/{id}/duplicate", json={"count": count})
+        payload = {
+            "copyAttachments": copyAttachments,
+            "copyCustomFields": copyCustomFields,
+            "copyMaintenance": copyMaintenance,
+            "copyPrefix": copyPrefix
+        }
+        data = await client.request("POST", f"items/{id}/duplicate", json=payload)
         return f"Duplicated Item: {json.dumps(data, indent=2)}"
 
     @mcp.tool()
@@ -245,15 +264,46 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         return "Deleted attachment"
 
     @mcp.tool()
+    async def update_item_attachment(
+        id: str, 
+        attachment_id: str, 
+        primary: bool = None, 
+        title: str = None, 
+        type: str = None
+    ) -> str:
+        """
+        Update item attachment details.
+        Type must be one of: 'photo', 'manual', 'warranty', 'receipt', 'attachment'.
+        """
+        payload = {}
+        if primary is not None: payload["primary"] = primary
+        if title is not None: payload["title"] = title
+        if type is not None: payload["type"] = type
+        
+        data = await client.request("PUT", f"items/{id}/attachments/{attachment_id}", json=payload)
+        return f"Updated Attachment: {json.dumps(data, indent=2)}"
+
+    @mcp.tool()
     async def get_item_maintenance(id: str, status: str = "both") -> str:
         """Get maintenance log"""
         data = await client.request("GET", f"items/{id}/maintenance", params={"status": status})
         return json.dumps(data, indent=2)
 
     @mcp.tool()
-    async def create_item_maintenance(id: str, name: str, description: str = None, date: str = None, cost: float = 0) -> str:
+    async def create_item_maintenance(
+        id: str, 
+        name: str, 
+        description: str = None, 
+        scheduledDate: str = None, 
+        completedDate: str = None,
+        cost: float = 0
+    ) -> str:
         """Create maintenance entry"""
-        payload = {"name": name, "description": description, "date": date, "cost": cost}
+        payload = {"name": name, "cost": cost}
+        if description: payload["description"] = description
+        if scheduledDate: payload["scheduledDate"] = scheduledDate
+        if completedDate: payload["completedDate"] = completedDate
+        
         data = await client.request("POST", f"items/{id}/maintenance", json=payload)
         return json.dumps(data, indent=2)
 
