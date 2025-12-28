@@ -17,6 +17,16 @@ Create a fully fledged MCP server for Homebox in Python, covering all API endpoi
 - 100% API coverage.
 - Code is DRY and efficient.
 
+## Date: 2025-12-26
+
+### Feature: Safe User Deletion & Auth Tools
+- Updated `delete_user_self` tool to prevent accidental deletion of the primary environment-defined user or API key user.
+- **Enhanced User Protection**:
+    - `HOMEBOX_PROTECTED_USERS`: Blocks **modification** (update/password change) AND **deletion** for specified user emails (comma/space separated) or `all`.
+    - `HOMEBOX_NON_DELETABLE_USERS`: Blocks **deletion** AND **email address changes** (to prevent bypassing protection) for specified user emails or `all`. Other updates are allowed.
+- Added `login_user` and `logout_user` tools to allow dynamic user switching during a session.
+- Added comprehensive tests in `test_advanced_protection.py`.
+
 ## Usage
 
 ### Testing with MCP Inspector
@@ -24,6 +34,10 @@ Run the following to test tools in a web UI:
 ```bash
 npx @modelcontextprotocol/inspector .venv/bin/python -m homebox_mcp.server
 ```
+
+## Lessons Learned
+- **Python f-strings**: Always check for double braces `{{` vs `{` in format strings to avoid `TypeError: unhashable type: 'dict'` or syntax errors.
+
 
 ### Manual Testing
 A test script `test_server.py` is provided. Run it with:
@@ -119,12 +133,12 @@ Point your client to `http://localhost:8000/sse`.
 - [x] DELETE /v1/templates/{id}
 - [x] POST /v1/templates/{id}/create-item
 - [x] PUT /v1/users/change-password
-- [x] POST /v1/users/login (Handled by Client)
+- [x] POST /v1/users/login
 - [ ] GET /v1/users/login/oidc (Redirect - Not suitable)
 - [ ] GET /v1/users/login/oidc/callback (Redirect - Not suitable)
-- [x] POST /v1/users/logout (Handled by Client)
+- [x] POST /v1/users/logout
 - [x] GET /v1/users/refresh (Handled by Client)
 - [x] POST /v1/users/register
 - [x] GET /v1/users/self
 - [x] PUT /v1/users/self
-- [x] DELETE /v1/users/self
+- [x] DELETE /v1/users/self (Safe Mode)
