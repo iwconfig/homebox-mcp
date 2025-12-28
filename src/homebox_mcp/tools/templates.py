@@ -1,5 +1,6 @@
 import json
 from ..client import HomeboxClient
+from ..guardrails import protect_resource
 from mcp.server.fastmcp import FastMCP
 
 def register_templates_tools(mcp: FastMCP, client: HomeboxClient):
@@ -11,6 +12,7 @@ def register_templates_tools(mcp: FastMCP, client: HomeboxClient):
         return json.dumps(data, indent=2)
 
     @mcp.tool()
+    @protect_resource(resource_type="templates", action="create")
     async def create_template(
         name: str,
         description: str = None,
@@ -59,6 +61,7 @@ def register_templates_tools(mcp: FastMCP, client: HomeboxClient):
         return json.dumps(data, indent=2)
 
     @mcp.tool()
+    @protect_resource(resource_type="templates", action="update")
     async def update_template(
         id: str,
         name: str = None,
@@ -105,6 +108,7 @@ def register_templates_tools(mcp: FastMCP, client: HomeboxClient):
         return f"Updated Template: {json.dumps(data, indent=2)}"
 
     @mcp.tool()
+    @protect_resource(resource_type="templates", action="delete")
     async def delete_template(id: str) -> str:
         """Delete Item Template"""
         await client.request("DELETE", f"templates/{id}")

@@ -1,5 +1,6 @@
 import json
 from ..client import HomeboxClient
+from ..guardrails import protect_resource
 from mcp.server.fastmcp import FastMCP
 
 def register_labels_tools(mcp: FastMCP, client: HomeboxClient):
@@ -15,6 +16,7 @@ def register_labels_tools(mcp: FastMCP, client: HomeboxClient):
         return output
 
     @mcp.tool()
+    @protect_resource(resource_type="labels", action="create")
     async def create_label(name: str, description: str = None, color: str = None) -> str:
         """Create Label"""
         payload = {"name": name}
@@ -30,6 +32,7 @@ def register_labels_tools(mcp: FastMCP, client: HomeboxClient):
         return json.dumps(data, indent=2)
 
     @mcp.tool()
+    @protect_resource(resource_type="labels", action="update")
     async def update_label(id: str, name: str = None, description: str = None, color: str = None) -> str:
         """Update Label"""
         existing = await client.request("GET", f"labels/{id}")
@@ -41,6 +44,7 @@ def register_labels_tools(mcp: FastMCP, client: HomeboxClient):
         return f"Updated Label: {json.dumps(data, indent=2)}"
 
     @mcp.tool()
+    @protect_resource(resource_type="labels", action="delete")
     async def delete_label(id: str) -> str:
         """Delete Label"""
         await client.request("DELETE", f"labels/{id}")

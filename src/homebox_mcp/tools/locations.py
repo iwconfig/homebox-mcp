@@ -1,5 +1,6 @@
 import json
 from ..client import HomeboxClient
+from ..guardrails import protect_resource
 from mcp.server.fastmcp import FastMCP
 
 def register_locations_tools(mcp: FastMCP, client: HomeboxClient):
@@ -17,6 +18,7 @@ def register_locations_tools(mcp: FastMCP, client: HomeboxClient):
         return output
 
     @mcp.tool()
+    @protect_resource(resource_type="locations", action="create")
     async def create_location(name: str, description: str = None, parentId: str = None) -> str:
         """Create Location"""
         payload = {"name": name}
@@ -40,6 +42,7 @@ def register_locations_tools(mcp: FastMCP, client: HomeboxClient):
         return f"Location: {data.get('name')}\nLink: {link}\n\n{json.dumps(data, indent=2)}"
 
     @mcp.tool()
+    @protect_resource(resource_type="locations", action="update")
     async def update_location(id: str, name: str = None, description: str = None, parentId: str = None) -> str:
         """Update Location"""
         existing = await client.request("GET", f"locations/{id}")
@@ -54,6 +57,7 @@ def register_locations_tools(mcp: FastMCP, client: HomeboxClient):
         return f"Updated Location: {json.dumps(data, indent=2)}"
 
     @mcp.tool()
+    @protect_resource(resource_type="locations", action="delete")
     async def delete_location(id: str) -> str:
         """Delete Location"""
         await client.request("DELETE", f"locations/{id}")
