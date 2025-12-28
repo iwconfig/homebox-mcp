@@ -24,8 +24,19 @@ Create a fully fledged MCP server for Homebox in Python, covering all API endpoi
 - **Enhanced User Protection**:
     - `HOMEBOX_PROTECTED_USERS`: Blocks **modification** (update/password change) AND **deletion** for specified user emails (comma/space separated) or `all`.
     - `HOMEBOX_NON_DELETABLE_USERS`: Blocks **deletion** AND **email address changes** (to prevent bypassing protection) for specified user emails or `all`. Other updates are allowed.
-- Added `login_user` and `logout_user` tools to allow dynamic user switching during a session.
-- Added comprehensive tests in `test_advanced_protection.py`.
+- **Resource Protection Guardrails**:
+    - `HOMEBOX_READONLY_RESOURCES`: Blocks **Create**, **Update**, and **Delete** for specified resource types (e.g., `items`, `locations`, `labels`, `templates`) or `all`.
+    - `HOMEBOX_NON_DELETABLE_RESOURCES`: Blocks **Delete** only for specified resource types.
+    - `HOMEBOX_PROTECTED_IDS`: Blocks **Update** and **Delete** for specific object UUIDs.
+    - `HOMEBOX_NON_DELETABLE_IDS`: Blocks **Delete** only for specific object UUIDs.
+
+#### Hierarchy of Safety
+The guardrails follow a three-tier lockdown strategy to balance flexibility and security:
+1.  **READONLY** (Type Level): The "Nuclear Option". Prevents **Create**, **Update**, and **Delete** for an entire class of resources (e.g., `locations`). The agent can only view them.
+2.  **PROTECTED** (Instance Level): Protects specific existing objects by ID or Email. Prevents **Update** and **Delete**, but allows creating *new* objects of that type.
+3.  **NON_DELETABLE** (Both Levels): The lightest touch. Allows Creation and Modification, but prevents destruction (**Delete**).
+
+- **Important Limitation**: Protection applies to the **direct target** of the action. Deleting a parent container (like a Location) will still delete its children (Items), even if the children are protected by ID.
 
 ## Usage
 

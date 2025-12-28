@@ -2,6 +2,7 @@ import json
 import os
 import re
 from ..client import HomeboxClient
+from ..guardrails import protect_resource
 from mcp.server.fastmcp import FastMCP
 
 # Cache to remember IDs that matched protected emails during this process lifecycle
@@ -64,6 +65,7 @@ def register_users_tools(mcp: FastMCP, client: HomeboxClient):
         return json.dumps(data, indent=2)
 
     @mcp.tool()
+    @protect_resource(resource_type="users", action="update")
     async def update_user_self(name: str = None, email: str = None) -> str:
         """Update current user account"""
         # Check protection
@@ -95,6 +97,7 @@ def register_users_tools(mcp: FastMCP, client: HomeboxClient):
         return f"Updated User: {json.dumps(data, indent=2)}"
 
     @mcp.tool()
+    @protect_resource(resource_type="users", action="update")
     async def change_password(oldPassword: str, newPassword: str) -> str:
         """Change current user password"""
         # Check protection
@@ -108,6 +111,7 @@ def register_users_tools(mcp: FastMCP, client: HomeboxClient):
         return "Password changed successfully"
 
     @mcp.tool()
+    @protect_resource(resource_type="users", action="create")
     async def register_user(name: str, email: str, password: str) -> str:
         """Register New User"""
         payload = {"name": name, "email": email, "password": password}
@@ -127,6 +131,7 @@ def register_users_tools(mcp: FastMCP, client: HomeboxClient):
         return "Logged out. Reverted to default credentials."
 
     @mcp.tool()
+    @protect_resource(resource_type="users", action="delete")
     async def delete_user_self() -> str:
         """Delete Account. Prevent deletion of the primary user defined in environment."""
         # Safety check

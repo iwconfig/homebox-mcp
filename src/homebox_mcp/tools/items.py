@@ -6,6 +6,7 @@ import base64
 import re
 import io
 from ..client import HomeboxClient
+from ..guardrails import protect_resource
 from mcp.server.fastmcp import FastMCP
 
 def register_items_tools(mcp: FastMCP, client: HomeboxClient):
@@ -83,6 +84,7 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         return output
 
     @mcp.tool()
+    @protect_resource(resource_type="items", action="create")
     async def create_item(
         name: str,
         locationId: str,
@@ -140,6 +142,7 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         return f"Created and Enriched Item: {json.dumps(final_item, indent=2)}"
 
     @mcp.tool()
+    @protect_resource(resource_type="items", action="update")
     async def update_item(
         id: str,
         name: str = None,
@@ -188,6 +191,7 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         return f"Updated Item: {json.dumps(data, indent=2)}"
 
     @mcp.tool()
+    @protect_resource(resource_type="items", action="update")
     async def patch_item(
         id: str, 
         locationId: str = None, 
@@ -204,6 +208,7 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         return f"Patched Item: {json.dumps(data, indent=2)}"
 
     @mcp.tool()
+    @protect_resource(resource_type="items", action="delete")
     async def delete_item(id: str) -> str:
         """Delete an item"""
         await client.request("DELETE", f"items/{id}")
