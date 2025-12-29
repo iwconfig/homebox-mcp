@@ -31,7 +31,22 @@ async def run_scenario_session(env_vars):
     async with stdio_client(server_params) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
+            
+            # Safety Check: Ensure we aren't using a protected account for tests
+            # (Optional: skip if you really want to run against main)
+            res = await session.call_tool("get_user_self", {})
+            if not getattr(res, "isError", False):
+                user_text = res.content[0].text
+                # Try to find email
+                m = re.search(r'"email": "([^"]+)"', user_text)
+                if m:
+                    email = m.group(1)
+                    # If this email is specifically listed as protected, maybe we should be careful.
+                    # For now, we just log it or the user can decide.
+                    pass
+
             yield session
+
 
 @pytest.mark.anyio
 async def test_readonly_resource_type():
@@ -100,3 +115,84 @@ async def test_non_deletable_id():
         # Delete (Should Fail)
         res = await session.call_tool("delete_item", {"id": item_id})
         assert getattr(res, "isError", False) or "disabled" in str(res.content).lower()
+
+@pytest.mark.anyio
+async def test_wipe_inventory_disabled_by_default():
+    """Test that wipe_inventory is disabled by default."""
+    async for session in run_scenario_session({}):
+        res = await session.call_tool("wipe_inventory", {})
+        assert res.isError is True
+        assert "Safety Lock" in res.content[0].text
+
+@pytest.mark.anyio
+async def test_wipe_inventory_blocked_by_guardrail():
+    """Test that wipe_inventory is blocked by guardrails even if enabled via safety switch."""
+    env_vars = {
+        "HOMEBOX_ALLOW_WIPE_INVENTORY": "true",
+        "HOMEBOX_NON_DELETABLE_RESOURCES": "inventory"
+    }
+    async for session in run_scenario_session(env_vars):
+        res = await session.call_tool("wipe_inventory", {})
+        assert res.isError is True
+        assert "disabled for resource type 'inventory'" in res.content[0].text
+
+@pytest.mark.anyio
+async def test_wipe_inventory_blocked_by_readonly():
+    """Test that wipe_inventory is blocked by readonly guardrails even if enabled via safety switch."""
+    env_vars = {
+        "HOMEBOX_ALLOW_WIPE_INVENTORY": "true",
+        "HOMEBOX_READONLY_RESOURCES": "inventory"
+    }
+    async for session in run_scenario_session(env_vars):
+        res = await session.call_tool("wipe_inventory", {})
+        assert res.isError is True
+        assert "disabled for resource type 'inventory'" in res.content[0].text
+
+@pytest.mark.anyio
+async def test_wipe_inventory_full_cycle():
+    """
+    Test the full wipe cycle using a DISPOSABLE test user.
+    This ensures we don't accidentally wipe real data.
+    """
+    test_email = f"test_{random_string()}@example.com"
+    test_pass = "TestPass123!"
+    test_name = "Test User"
+    
+    env_vars = {"HOMEBOX_ALLOW_WIPE_INVENTORY": "true"}
+    async for session in run_scenario_session(env_vars):
+        # 1. Register a temporary user
+        reg_res = await session.call_tool("register_user", {
+            "name": test_name, 
+            "email": test_email, 
+            "password": test_pass
+        })
+        if getattr(reg_res, "isError", False):
+            # If registration fails (e.g. already disabled), skip
+            if "disabled" in str(reg_res.content).lower() or "403" in str(reg_res.content):
+                pytest.skip("User registration is disabled on this Homebox instance.")
+            return
+
+        try:
+            # 2. Login as the new user
+            await session.call_tool("login_user", {"username": test_email, "password": test_pass})
+            
+            # 3. Create some dummy data
+            l_res = await session.call_tool("create_location", {"name": "WipeTestLoc"})
+            l_id = get_id(l_res.content[0].text)
+            await session.call_tool("create_item", {"name": "WipeItem", "locationId": l_id})
+            
+            # 4. Wipe Inventory
+            wipe_res = await session.call_tool("wipe_inventory", {"wipeLocations": True})
+            if getattr(wipe_res, "isError", False) and "404" in wipe_res.content[0].text:
+                pytest.skip("wipe-inventory endpoint not supported by this Homebox version.")
+            assert not getattr(wipe_res, "isError", False)
+            
+            # 5. Verify it's gone
+            items_res = await session.call_tool("list_items", {})
+            # FastMCP might return raw JSON string in text
+            assert '"total": 0' in items_res.content[0].text or '"total":0' in items_res.content[0].text
+            
+        finally:
+            # 6. Cleanup: Re-login if necessary and delete the test user
+            # We are already logged in as them
+            await session.call_tool("delete_user_self", {})

@@ -1,4 +1,5 @@
 import json
+import os
 from ..client import HomeboxClient
 from ..guardrails import protect_resource
 from mcp.server.fastmcp import FastMCP
@@ -15,10 +16,19 @@ def register_actions_tools(mcp: FastMCP, client: HomeboxClient):
         """
         DANGEROUS: Deletes ALL items in the inventory.
         
+        REQUIRED: 'HOMEBOX_ALLOW_WIPE_INVENTORY=true' environment variable must be set.
+        
         Optionally wipes labels, locations, and maintenance records.
         This action is blocked if 'inventory' is in HOMEBOX_READONLY_RESOURCES 
         or HOMEBOX_NON_DELETABLE_RESOURCES.
         """
+        # Safety Switch: Disabled by default
+        if os.getenv("HOMEBOX_ALLOW_WIPE_INVENTORY", "").lower() != "true":
+            raise ValueError(
+                "Safety Lock: 'wipe_inventory' is disabled by default. "
+                "Set HOMEBOX_ALLOW_WIPE_INVENTORY=true to enable this destructive action."
+            )
+
         payload = {
             "wipeLabels": wipe_labels,
             "wipeLocations": wipe_locations,
