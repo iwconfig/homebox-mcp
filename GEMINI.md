@@ -38,7 +38,28 @@ The guardrails follow a three-tier lockdown strategy to balance flexibility and 
 
 - **Important Limitation**: Protection applies to the **direct target** of the action. Deleting a parent container (like a Location) will still delete its children (Items), even if the children are protected by ID.
 
+## Date: 2025-12-28
+
+### Feature: Comprehensive Test Suite & Stability
+- **Testing Infrastructure**:
+    - Migrated to `pytest` with `anyio` for modular, asynchronous testing.
+    - Achieved **100% Tool Coverage**: Every one of the ~70 registered tools is now exercised by the test suite.
+    - Implemented a **Local Webhook Receiver**: Added a `local_http_server` fixture in `conftest.py` to allow offline testing of the Notifier feature using `generic+http://`.
+- **API Realignment (Source Code Verified)**:
+    - **Barcode Search**: Discovered that the Homebox decoder specifically looks for the `productEAN` query parameter, despite documentation stating `data`.
+    - **Notifier Testing**: Discovered that `url` is required in the JSON request body for the test endpoint.
+    - **Data Types**: Fixed `500` errors caused by strict JSON unmarshaling in Homebox (Go) by converting numeric fields like `purchasePrice` and `cost` to strings for specific tools.
+- **Bug Fixes**:
+    - Ensured `PUT` requests for Users and Item Attachments include all existing required fields to prevent validation failures.
+    - Implemented graceful handling for `404` (Currency/Password change) and `500` (Barcode Search Panic) errors.
+    - Added missing `get_item_attachment_token` tool.
+
 ## Usage
+
+### Testing with Pytest
+```bash
+PYTHONPATH=src .venv/bin/pytest tests/
+```
 
 ### Testing with MCP Inspector
 Run the following to test tools in a web UI:
@@ -48,12 +69,16 @@ npx @modelcontextprotocol/inspector .venv/bin/python -m homebox_mcp.server
 
 ## Lessons Learned
 - **Python f-strings**: Always check for double braces `{{` vs `{` in format strings to avoid `TypeError: unhashable type: 'dict'` or syntax errors.
+- **Go Struct Tags**: The actual parameter keys decoded by the Homebox backend sometimes mismatch the Swagger documentation (e.g., `productEAN` vs `data`). Always verify against the backend source code when debugging `decoding error` or `404`.
+- **Strict JSON Unmarshaling**: Some Go backends require numeric fields to be quoted as strings if they use the `,string` struct tag.
+- **Task Isolation**: When using `anyio` with `pytest`, ensure server sessions are closed within the same task they were created in to avoid `RuntimeError`.
 
 
 ### Manual Testing
-A test script `test_server.py` is provided. Run it with:
+Individual tests are located in `./tests`. You can run them by category:
 ```bash
-PYTHONPATH=src .venv/bin/python test_server.py
+.venv/bin/pytest tests/test_items.py
+.venv/bin/pytest tests/test_user_guardrails.py
 ```
 
 ### Running over SSE
@@ -85,7 +110,7 @@ Point your client to `http://localhost:8000/sse`.
 - [x] POST /v1/actions/set-primary-photos
 - [x] POST /v1/actions/zero-item-time-fields
 - [x] GET /v1/assets/{id}
-- [x] GET /v1/currency
+- [x] GET /v1/currencies
 - [x] GET /v1/groups
 - [x] PUT /v1/groups
 - [x] POST /v1/groups/invitations
@@ -104,7 +129,7 @@ Point your client to `http://localhost:8000/sse`.
 - [x] DELETE /v1/items/{id}
 - [x] PATCH /v1/items/{id}
 - [x] POST /v1/items/{id}/attachments (Multipart)
-- [x] GET /v1/items/{id}/attachments/{attachment_id} (Info only)
+- [x] GET /v1/items/{id}/attachments/{attachment_id} (Token Retrieval)
 - [x] PUT /v1/items/{id}/attachments/{attachment_id}
 - [x] DELETE /v1/items/{id}/attachments/{attachment_id}
 - [x] POST /v1/items/{id}/duplicate

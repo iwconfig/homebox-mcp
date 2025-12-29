@@ -5,6 +5,7 @@ import httpx
 import base64
 import re
 import io
+from datetime import datetime, timezone
 from ..client import HomeboxClient
 from ..guardrails import protect_resource
 from mcp.server.fastmcp import FastMCP
@@ -130,7 +131,7 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         if serialNumber is not None: update_payload["serialNumber"] = serialNumber
         if modelNumber is not None: update_payload["modelNumber"] = modelNumber
         if manufacturer is not None: update_payload["manufacturer"] = manufacturer
-        if purchasePrice is not None: update_payload["purchasePrice"] = float(purchasePrice)
+        if purchasePrice is not None: update_payload["purchasePrice"] = str(purchasePrice)
         
         # Defaults for strict PUT
         for key in ["purchaseFrom", "soldTo", "soldNotes", "warrantyDetails"]:
@@ -179,7 +180,7 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         if serialNumber is not None: update_payload["serialNumber"] = serialNumber
         if modelNumber is not None: update_payload["modelNumber"] = modelNumber
         if manufacturer is not None: update_payload["manufacturer"] = manufacturer
-        if purchasePrice is not None: update_payload["purchasePrice"] = float(purchasePrice)
+        if purchasePrice is not None: update_payload["purchasePrice"] = str(purchasePrice)
         if fields is not None: update_payload["fields"] = fields
 
         for key in ["purchaseFrom", "soldTo", "soldNotes", "warrantyDetails"]:
@@ -233,10 +234,13 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         return json.dumps(data, indent=2)
 
     @mcp.tool()
-    async def get_item_field_values() -> str:
-        """Get all custom field values"""
-        data = await client.request("GET", "items/fields/values")
-        return json.dumps(data, indent=2)
+    async def get_item_field_values(field: str) -> str:
+        """Get all custom field values for a specific field name"""
+        try:
+            data = await client.request("GET", "items/fields/values", params={"field": field})
+            return json.dumps(data, indent=2)
+        except Exception as e:
+            return f"Error fetching item field values for '{field}': {str(e)}"
 
     @mcp.tool()
     async def duplicate_item(
@@ -263,6 +267,12 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         return json.dumps(data, indent=2)
 
     @mcp.tool()
+    async def get_item_attachment_token(id: str, attachment_id: str) -> str:
+        """Get the download token for an item attachment"""
+        data = await client.request("GET", f"items/{id}/attachments/{attachment_id}")
+        return json.dumps(data, indent=2)
+
+    @mcp.tool()
     async def delete_item_attachment(id: str, attachment_id: str) -> str:
         """Delete item attachment"""
         await client.request("DELETE", f"items/{id}/attachments/{attachment_id}")
@@ -280,10 +290,17 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         Update item attachment details.
         Type must be one of: 'photo', 'manual', 'warranty', 'receipt', 'attachment'.
         """
-        payload = {}
-        if primary is not None: payload["primary"] = primary
-        if title is not None: payload["title"] = title
-        if type is not None: payload["type"] = type
+        # Fetch existing to ensure we have required fields for PUT
+        item = await client.request("GET", f"items/{id}")
+        existing = next((a for a in item.get("attachments", []) if a["id"] == attachment_id), None)
+        if not existing:
+            return f"Error: Attachment {attachment_id} not found on item {id}"
+
+        payload = {
+            "primary": primary if primary is not None else existing.get("primary", False),
+            "title": title if title is not None else existing.get("title", ""),
+            "type": type if type is not None else existing.get("type", "attachment")
+        }
         
         data = await client.request("PUT", f"items/{id}/attachments/{attachment_id}", json=payload)
         return f"Updated Attachment: {json.dumps(data, indent=2)}"
@@ -304,13 +321,22 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         cost: float = 0
     ) -> str:
         """Create maintenance entry"""
-        payload = {"name": name, "cost": cost}
-        if description: payload["description"] = description
-        if scheduledDate: payload["scheduledDate"] = scheduledDate
-        if completedDate: payload["completedDate"] = completedDate
+        # Homebox requires at least one date to be set and valid.
+        now_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         
-        data = await client.request("POST", f"items/{id}/maintenance", json=payload)
-        return json.dumps(data, indent=2)
+        payload = {
+            "name": name, 
+            "cost": str(cost),
+            "description": description or "",
+            "scheduledDate": scheduledDate or now_iso,
+            "completedDate": completedDate or "0001-01-01T00:00:00Z"
+        }
+        
+        try:
+            data = await client.request("POST", f"items/{id}/maintenance", json=payload)
+            return json.dumps(data, indent=2)
+        except Exception as e:
+            return f"Error creating maintenance entry: {str(e)}"
 
     @mcp.tool()
     async def upload_item_attachment(

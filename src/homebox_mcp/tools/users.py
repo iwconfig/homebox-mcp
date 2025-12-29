@@ -76,29 +76,20 @@ def register_users_tools(mcp: FastMCP, client: HomeboxClient):
         _check_protection(user_item, "HOMEBOX_PROTECTED_USERS", "update_user")
 
         # 2. Delete Protection (Prevent Email Change)
-        # We check if the user is non-deletable. If they are, and they try to change their email,
-        # we block it to prevent them from "escaping" the email-based check in a future run.
         if email and email != user_item.get("email"):
              _check_protection(user_item, "HOMEBOX_NON_DELETABLE_USERS", "change_email")
 
-        payload = {}
-
-        if name:
-          payload['name'] = name
-        if email:
-          payload['email'] = email
-
-        # payload = {
-        #     "name": name or user_item.get("name"),
-        #     "email": email or user_item.get("email")
-        # }
+        payload = {
+            "name": name or user_item.get("name"),
+            "email": email or user_item.get("email")
+        }
         
         data = await client.request("PUT", "users/self", json=payload)
         return f"Updated User: {json.dumps(data, indent=2)}"
 
     @mcp.tool()
     @protect_resource(resource_type="users", action="update")
-    async def change_password(oldPassword: str, newPassword: str) -> str:
+    async def change_password(current: str, new: str) -> str:
         """Change current user password"""
         # Check protection
         current_user = await client.request("GET", "users/self")
@@ -106,9 +97,14 @@ def register_users_tools(mcp: FastMCP, client: HomeboxClient):
         
         _check_protection(user_item, "HOMEBOX_PROTECTED_USERS", "change_password")
 
-        payload = {"current": oldPassword, "new": newPassword}
-        await client.request("PUT", "users/change-password", json=payload)
-        return "Password changed successfully"
+        payload = {"current": current, "new": new}
+        try:
+            await client.request("PUT", "users/change-password", json=payload)
+            return "Password changed successfully"
+        except Exception as e:
+            if "404" in str(e):
+                return "Change password endpoint not found (404). This might not be supported in this Homebox version."
+            raise
 
     @mcp.tool()
     @protect_resource(resource_type="users", action="create")

@@ -20,8 +20,12 @@ def register_notifiers_tools(mcp: FastMCP, client: HomeboxClient):
     @mcp.tool()
     async def test_notifier(url: str) -> str:
         """Test Notifier"""
-        await client.request("POST", "notifiers/test", params={"url": url})
-        return "Notifier test sent"
+        try:
+            # Body field 'url' is required for validation
+            await client.request("POST", "notifiers/test", json={"url": url})
+            return "Notifier test signal sent successfully"
+        except Exception as e:
+            return f"Error testing notifier: {str(e)}"
 
     @mcp.tool()
     async def update_notifier(id: str, name: str = None, url: str = None, isActive: bool = None) -> str:

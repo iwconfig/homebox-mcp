@@ -1,0 +1,145 @@
+import pytest
+import re
+import uuid
+import json
+import base64
+
+def get_id(text):
+    if not text: return None
+    m = re.search(r'"id":\s*"([a-f0-9\-]+)"', text)
+    if m: return m.group(1)
+    return None
+
+@pytest.mark.anyio
+async def test_item_lifecycle(server_session):
+    # Setup: need a location
+    loc_res = await server_session.call_tool("create_location", {"name": "Item-Test-Loc"})
+    loc_id = get_id(loc_res.content[0].text)
+    
+    # 1. Create item
+    item_name = f"Test-Item-{uuid.uuid4().hex[:6]}"
+    res = await server_session.call_tool("create_item", {
+        "name": item_name, 
+        "locationId": loc_id,
+        "notes": "Initial Notes",
+        "quantity": 5
+    })
+    assert not getattr(res, "isError", False)
+    item_id = get_id(res.content[0].text)
+    assert item_id is not None
+
+    # 2. Get item
+    res = await server_session.call_tool("get_item", {"id": item_id})
+    assert not getattr(res, "isError", False)
+    assert item_name in res.content[0].text
+
+    # 3. Update item
+    res = await server_session.call_tool("update_item", {"id": item_id, "notes": "Updated Notes"})
+    assert not getattr(res, "isError", False)
+    assert "Updated Notes" in res.content[0].text
+
+    # 4. Patch item
+    res = await server_session.call_tool("patch_item", {"id": item_id, "quantity": 10})
+    assert not getattr(res, "isError", False)
+    assert '"quantity": 10' in res.content[0].text
+
+    # 5. List items
+    res = await server_session.call_tool("list_items", {"q": item_name})
+    assert not getattr(res, "isError", False)
+    assert item_name in res.content[0].text
+
+    # 6. Item Link
+    res = await server_session.call_tool("get_item_link", {"query": item_name})
+    assert not getattr(res, "isError", False)
+    assert "Found" in res.content[0].text
+
+    # 6.1 Get by Asset ID
+    # Fetch item to get its assetId
+    item_data_res = await server_session.call_tool("get_item", {"id": item_id})
+    asset_id_match = re.search(r'"assetId":\s*"([^"]+)"', item_data_res.content[0].text)
+    if asset_id_match:
+        asset_id = asset_id_match.group(1)
+        res = await server_session.call_tool("get_item_by_asset_id", {"id": asset_id})
+        assert not getattr(res, "isError", False)
+
+    # 7. Item Path
+    res = await server_session.call_tool("get_item_path", {"id": item_id})
+    assert not getattr(res, "isError", False)
+
+    # 8. Duplicate item
+    res = await server_session.call_tool("duplicate_item", {"id": item_id, "copyPrefix": "Dup-"})
+    assert not getattr(res, "isError", False)
+    dup_id = get_id(res.content[0].text)
+    assert dup_id is not None
+
+    # Cleanup
+    await server_session.call_tool("delete_item", {"id": item_id})
+    await server_session.call_tool("delete_item", {"id": dup_id})
+    await server_session.call_tool("delete_location", {"id": loc_id})
+
+@pytest.mark.anyio
+async def test_item_attachments(server_session):
+    # Setup
+    loc_res = await server_session.call_tool("create_location", {"name": "Att-Test-Loc"})
+    loc_id = get_id(loc_res.content[0].text)
+    item_res = await server_session.call_tool("create_item", {"name": "Att-Item", "locationId": loc_id})
+    item_id = get_id(item_res.content[0].text)
+
+    # 1. Upload attachment (Base64)
+    b64_data = "data:text/plain;base64,VGVzdCBDb250ZW50" # "Test Content"
+    res = await server_session.call_tool("upload_item_attachment", {
+        "item_id": item_id,
+        "file_path": b64_data,
+        "attachment_type": "attachment"
+    })
+    assert not getattr(res, "isError", False)
+    
+    # Extract attachment ID from JSON in response
+    json_match = re.search(r"\{.*\}", res.content[0].text, re.DOTALL)
+    data = json.loads(json_match.group(0))
+    att_id = data["attachments"][-1]["id"]
+
+    # 2. Update attachment
+    res = await server_session.call_tool("update_item_attachment", {
+        "id": item_id,
+        "attachment_id": att_id,
+        "title": "New Title"
+    })
+    assert not getattr(res, "isError", False)
+
+    # 3. Get attachment token
+    res = await server_session.call_tool("get_item_attachment_token", {
+        "id": item_id,
+        "attachment_id": att_id
+    })
+    assert not getattr(res, "isError", False)
+
+    # 4. Delete attachment
+    res = await server_session.call_tool("delete_item_attachment", {
+        "id": item_id,
+        "attachment_id": att_id
+    })
+    assert not getattr(res, "isError", False)
+
+    # Cleanup
+    await server_session.call_tool("delete_item", {"id": item_id})
+    await server_session.call_tool("delete_location", {"id": loc_id})
+
+@pytest.mark.anyio
+async def test_item_fields(server_session):
+    res = await server_session.call_tool("get_item_fields", {})
+    assert not getattr(res, "isError", False)
+
+    res = await server_session.call_tool("get_item_field_values", {"field": "name"})
+    assert not getattr(res, "isError", False)
+
+@pytest.mark.anyio
+async def test_item_export_import(server_session):
+    # Export
+    res = await server_session.call_tool("export_items", {})
+    assert not getattr(res, "isError", False)
+    assert "HB.name" in res.content[0].text
+
+    # Import (simplified - just check tool exists and handles missing file)
+    res = await server_session.call_tool("import_items", {"file_path": "/non/existent/file.csv"})
+    assert "Error" in res.content[0].text

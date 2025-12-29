@@ -21,7 +21,7 @@ def register_maintenance_tools(mcp: FastMCP, client: HomeboxClient):
         itemId: str = None
     ) -> str:
         """Update Maintenance Entry"""
-        all_m = await client.request("GET", "maintenance")
+        all_m = await client.request("GET", "maintenance", params={"status": "both"})
         existing = next((m for m in all_m if m["id"] == id), None)
         if not existing:
             return f"Maintenance entry {id} not found"
@@ -31,7 +31,7 @@ def register_maintenance_tools(mcp: FastMCP, client: HomeboxClient):
         if description: payload["description"] = description
         if scheduledDate: payload["scheduledDate"] = scheduledDate
         if completedDate: payload["completedDate"] = completedDate
-        if cost is not None: payload["cost"] = cost
+        if cost is not None: payload["cost"] = str(cost)
         if itemId: payload["itemId"] = itemId
             
         data = await client.request("PUT", f"maintenance/{id}", json=payload)
