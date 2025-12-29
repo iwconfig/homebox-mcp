@@ -54,6 +54,14 @@ The guardrails follow a three-tier lockdown strategy to balance flexibility and 
     - Implemented graceful handling for `404` (Currency/Password change) and `500` (Barcode Search Panic) errors.
     - Added missing `get_item_attachment_token` tool.
 
+## Date: 2025-12-29
+
+### Feature: Dangerous Action Protection
+- **Implemented `wipe_inventory`**: Added the `POST /v1/actions/wipe-inventory` endpoint.
+    - **Guardrails**: Classified as `resource_type="inventory"` and `action="delete"`.
+    - **Protection**: Can be blocked by setting `HOMEBOX_READONLY_RESOURCES=inventory` or `HOMEBOX_NON_DELETABLE_RESOURCES=inventory` (or `all`).
+- **Testing**: Added `tests/test_wipe_guardrails.py` to verify that guardrails correctly block this dangerous action when configured.
+
 ## Usage
 
 ### Testing with Pytest
@@ -109,6 +117,7 @@ Point your client to `http://localhost:8000/sse`.
 - [x] POST /v1/actions/ensure-import-refs
 - [x] POST /v1/actions/set-primary-photos
 - [x] POST /v1/actions/zero-item-time-fields
+- [x] POST /v1/actions/wipe-inventory (Protected by guardrails)
 - [x] GET /v1/assets/{id}
 - [x] GET /v1/currencies
 - [x] GET /v1/groups

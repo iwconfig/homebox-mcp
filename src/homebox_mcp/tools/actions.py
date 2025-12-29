@@ -1,8 +1,31 @@
 import json
 from ..client import HomeboxClient
+from ..guardrails import protect_resource
 from mcp.server.fastmcp import FastMCP
 
 def register_actions_tools(mcp: FastMCP, client: HomeboxClient):
+
+    @mcp.tool()
+    @protect_resource(resource_type="inventory", action="delete")
+    async def wipe_inventory(
+        wipe_labels: bool = False,
+        wipe_locations: bool = False,
+        wipe_maintenance: bool = False
+    ) -> str:
+        """
+        DANGEROUS: Deletes ALL items in the inventory.
+        
+        Optionally wipes labels, locations, and maintenance records.
+        This action is blocked if 'inventory' is in HOMEBOX_READONLY_RESOURCES 
+        or HOMEBOX_NON_DELETABLE_RESOURCES.
+        """
+        payload = {
+            "wipeLabels": wipe_labels,
+            "wipeLocations": wipe_locations,
+            "wipeMaintenance": wipe_maintenance
+        }
+        data = await client.request("POST", "actions/wipe-inventory", json=payload)
+        return json.dumps(data, indent=2)
 
     @mcp.tool()
     async def create_missing_thumbnails() -> str:
