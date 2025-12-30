@@ -84,6 +84,7 @@ The guardrails follow a three-tier lockdown strategy to balance flexibility and 
     - **Zero-Dates**: `test_create_item_full_enrichment` now explicitly asserts that `purchaseTime`, `warrantyExpires`, etc., are set to `0001-01-01T00:00:00Z` to prevents backend issues.
     - **Bad Data**: Added tests for invalid inputs (`quantity="five"`) and file operations (empty/unreadable files).
     - **Partial Failures**: Added `test_create_item_partial_failure` to verify behavior when the `PUT` step of item creation fails.
+    - **Edge Cases**: Added `test_upload_attachment_from_url_no_extension` to verify that file extensions are correctly appended when missing from the URL but the MIME type is known.
 - **Robust Client Error Handling**:
     - Updated `HomeboxClient.request` to gracefully handle `json.JSONDecodeError`. If the server returns `Content-Type: application/json` but the body is HTML or a raw stack trace (common in 500 errors), the client now logs a warning and returns the text instead of crashing.
     - Added `test_request_json_decode_error` to verify this resilience.

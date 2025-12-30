@@ -513,3 +513,34 @@ async def test_upload_item_attachment_fallback_mime(mock_client):
     filename = kwargs["files"]["file"][0]
     assert filename.endswith(".bin")
 
+@pytest.mark.asyncio
+async def test_upload_attachment_from_url_no_extension(mock_client):
+    """Verify that file extension is appended when missing from URL but MIME type is known."""
+    mock_client.request.return_value = {"id": "att-1"}
+    
+    with patch("httpx.AsyncClient") as MockHttp:
+        mock_http_instance = MockHttp.return_value
+        mock_http_instance.__aenter__.return_value = mock_http_instance
+        
+        # Mock response with PNG mime type but no extension in URL
+        mock_response = MagicMock(
+            status_code=200, 
+            content=b"png-data", 
+            headers={"content-type": "image/png"}
+        )
+        mock_http_instance.get = AsyncMock(return_value=mock_response)
+        mock_response.raise_for_status = MagicMock()
+
+        res = await handle_upload_item_attachment(
+            mock_client, 
+            "item-1", 
+            "http://example.com/random-id" 
+        )
+        
+        assert "uploaded successfully" in res
+        
+        args, kwargs = mock_client.request.call_args
+        filename = kwargs["files"]["file"][0]
+        # Should have appended .png based on image/png
+        assert filename == "random-id.png"
+
