@@ -8,7 +8,8 @@ dependencies = [
     "mcp",
     "httpx",
     "python-dotenv",
-    "pydantic"
+    "pydantic",
+    "respx"
 ]
 
 [project.scripts]
@@ -20,3 +21,4 @@ build-backend = "hatchling.build"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]

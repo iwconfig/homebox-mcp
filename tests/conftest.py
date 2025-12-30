@@ -5,7 +5,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 @pytest.fixture
 def anyio_backend():
