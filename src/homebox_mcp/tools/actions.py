@@ -1,7 +1,7 @@
 import json
 import os
 from ..client import HomeboxClient
-from ..guardrails import protect_resource
+from ..guardrails import protect_resource, check_user_protection
 from mcp.server.fastmcp import FastMCP
 
 def register_actions_tools(mcp: FastMCP, client: HomeboxClient):
@@ -22,12 +22,17 @@ def register_actions_tools(mcp: FastMCP, client: HomeboxClient):
         This action is blocked if 'inventory' is in HOMEBOX_READONLY_RESOURCES 
         or HOMEBOX_NON_DELETABLE_RESOURCES.
         """
-        # Safety Switch: Disabled by default
+        # 1. Safety Switch: Disabled by default
         if os.getenv("HOMEBOX_ALLOW_WIPE_INVENTORY", "").lower() != "true":
             raise ValueError(
                 "Safety Lock: 'wipe_inventory' is disabled by default. "
                 "Set HOMEBOX_ALLOW_WIPE_INVENTORY=true to enable this destructive action."
             )
+
+        # 2. Guardrail: Block wiping if using a protected account
+        current_user = await client.request("GET", "users/self")
+        user_item = current_user.get("item", {})
+        check_user_protection(user_item, "wipe_inventory")
 
         payload = {
             "wipeLabels": wipe_labels,

@@ -62,6 +62,20 @@ The guardrails follow a three-tier lockdown strategy to balance flexibility and 
     - **Protection**: Can be blocked by setting `HOMEBOX_READONLY_RESOURCES=inventory` or `HOMEBOX_NON_DELETABLE_RESOURCES=inventory` (or `all`).
 - **Testing**: Added `tests/test_wipe_guardrails.py` to verify that guardrails correctly block this dangerous action when configured.
 
+### Feature: Tiered Safety Switches & Refined Hierarchy
+- **Tier 1: Safety Switches (Feature Flags)**:
+    - Added mandatory environment variables to enable destructive tools. All default to `false`.
+    - `HOMEBOX_ALLOW_WIPE_INVENTORY`: Enables `wipe_inventory`.
+    - `HOMEBOX_ALLOW_USER_DELETION`: Enables `delete_user_self`.
+    - `HOMEBOX_ALLOW_USER_REGISTRATION`: Enables `register_user`.
+- **Tier 2: Universal Resource Guardrails**:
+    - `HOMEBOX_READONLY_RESOURCES`: Blocks Create, Update, Delete for whole types.
+    - `HOMEBOX_NON_DELETABLE_RESOURCES`: Blocks Delete for whole types.
+- **Tier 3: Instance Protection**:
+    - `HOMEBOX_PROTECTED_USERS`: Blocks modification and deletion of specific accounts.
+    - **Refined Hierarchy**: Destructive actions like `wipe_inventory` now automatically check if the *authenticated user* is protected. The agent cannot wipe the inventory of a protected account even if the safety switch is on.
+- **Code Consolidation**: Moved user protection logic into `guardrails.py` for cross-tool reuse.
+
 ## Usage
 
 ### Testing with Pytest
@@ -183,7 +197,7 @@ Point your client to `http://localhost:8000/sse`.
 - [ ] GET /v1/users/login/oidc/callback (Redirect - Not suitable)
 - [x] POST /v1/users/logout
 - [x] GET /v1/users/refresh (Handled by Client)
-- [x] POST /v1/users/register
+- [x] POST /v1/users/register (Protected by safety switch)
 - [x] GET /v1/users/self
 - [x] PUT /v1/users/self
-- [x] DELETE /v1/users/self (Safe Mode)
+- [x] DELETE /v1/users/self (Safe Mode + Safety switch)

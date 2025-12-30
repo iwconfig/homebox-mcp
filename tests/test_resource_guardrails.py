@@ -20,6 +20,9 @@ def get_id(text):
 async def run_scenario_session(env_vars):
     env = os.environ.copy()
     env["PYTHONPATH"] = os.path.join(os.getcwd(), "src")
+    # Enable safety switches for test setup/cleanup
+    env["HOMEBOX_ALLOW_USER_REGISTRATION"] = "true"
+    env["HOMEBOX_ALLOW_USER_DELETION"] = "true"
     env.update(env_vars)
 
     server_params = StdioServerParameters(
@@ -125,12 +128,13 @@ async def test_wipe_inventory_disabled_by_default():
         assert "Safety Lock" in res.content[0].text
 
 @pytest.mark.anyio
-async def test_wipe_inventory_blocked_by_guardrail():
+async def test_wipe_inventory_blocked_by_non_deletable():
     """Test that wipe_inventory is blocked by guardrails even if enabled via safety switch."""
     env_vars = {
         "HOMEBOX_ALLOW_WIPE_INVENTORY": "true",
         "HOMEBOX_NON_DELETABLE_RESOURCES": "inventory"
     }
+
     async for session in run_scenario_session(env_vars):
         res = await session.call_tool("wipe_inventory", {})
         assert res.isError is True
@@ -196,3 +200,30 @@ async def test_wipe_inventory_full_cycle():
             # 6. Cleanup: Re-login if necessary and delete the test user
             # We are already logged in as them
             await session.call_tool("delete_user_self", {})
+
+@pytest.mark.anyio
+async def test_wipe_inventory_blocked_for_protected_user():
+    """Test that wipe_inventory is blocked if the current user is protected."""
+    test_email = f"test_{random_string()}@example.com"
+    test_pass = "TestPass123!"
+    test_name = "Test User"
+    
+    # We mark this specific test user as PROTECTED
+    env_vars = {
+        "HOMEBOX_ALLOW_WIPE_INVENTORY": "true",
+        "HOMEBOX_PROTECTED_USERS": test_email
+    }
+    
+    async for session in run_scenario_session(env_vars):
+        # 1. Register
+        await session.call_tool("register_user", {"name": test_name, "email": test_email, "password": test_pass})
+        # 2. Login
+        await session.call_tool("login_user", {"username": test_email, "password": test_pass})
+        
+        # 3. Wipe should fail because user is protected
+        res = await session.call_tool("wipe_inventory", {})
+        assert res.isError is True
+        assert "disabled for protected user" in res.content[0].text or "disabled for user" in res.content[0].text
+
+        # Cleanup: we have to un-protect to delete if we wanted to, 
+        # but here we just let it be or the session ends.
