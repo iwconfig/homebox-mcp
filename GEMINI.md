@@ -76,6 +76,18 @@ The guardrails follow a three-tier lockdown strategy to balance flexibility and 
     - **Refined Hierarchy**: Destructive actions like `wipe_inventory` now automatically check if the *authenticated user* is protected. The agent cannot wipe the inventory of a protected account even if the safety switch is on.
 - **Code Consolidation**: Moved user protection logic into `guardrails.py` for cross-tool reuse.
 
+## Date: 2025-12-30
+
+### Feature: Test Suite Hardening
+- **Refactored `test_generic_handlers_success`**: Replaced the loop-based smoke test with granular, parametrized tests for each tool group (items, locations, labels, etc.) to ensure specific parameters are correctly passed to the client.
+- **Enhanced Data Validation Tests**:
+    - **Zero-Dates**: `test_create_item_full_enrichment` now explicitly asserts that `purchaseTime`, `warrantyExpires`, etc., are set to `0001-01-01T00:00:00Z` to prevents backend issues.
+    - **Bad Data**: Added tests for invalid inputs (`quantity="five"`) and file operations (empty/unreadable files).
+    - **Partial Failures**: Added `test_create_item_partial_failure` to verify behavior when the `PUT` step of item creation fails.
+- **Robust Client Error Handling**:
+    - Updated `HomeboxClient.request` to gracefully handle `json.JSONDecodeError`. If the server returns `Content-Type: application/json` but the body is HTML or a raw stack trace (common in 500 errors), the client now logs a warning and returns the text instead of crashing.
+    - Added `test_request_json_decode_error` to verify this resilience.
+
 ## Usage
 
 ### Testing with Pytest
@@ -94,6 +106,7 @@ npx @modelcontextprotocol/inspector .venv/bin/python -m homebox_mcp.server
 - **Go Struct Tags**: The actual parameter keys decoded by the Homebox backend sometimes mismatch the Swagger documentation (e.g., `productEAN` vs `data`). Always verify against the backend source code when debugging `decoding error` or `404`.
 - **Strict JSON Unmarshaling**: Some Go backends require numeric fields to be quoted as strings if they use the `,string` struct tag.
 - **Task Isolation**: When using `anyio` with `pytest`, ensure server sessions are closed within the same task they were created in to avoid `RuntimeError`.
+- **Mocking Fidelity**: Generic smoke tests that loop over tools are insufficient for verifying parameter mapping. Explicit assertions for every tool call (checking `params` and `json` payloads) are necessary to catch regressions in argument handling.
 
 
 ### Manual Testing

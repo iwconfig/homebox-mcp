@@ -101,6 +101,21 @@ async def test_request_error_handling(api_key_client):
             await api_key_client.request("GET", "secret")
         assert "403" in str(excinfo.value)
 
+    @pytest.mark.anyio
+    async def test_request_json_decode_error(api_key_client):
+        """Verify graceful handling when server returns application/json header but invalid body."""
+        async with respx.mock(base_url="http://mock-homebox/api/v1") as respx_mock:
+            # It should raise HTTPStatusError because of 500, but let's see if we can read the text
+            # wait, request() raises raise_for_status(). 
+            # If we change the status to 200 for this test to check decoding logic only:
+            respx_mock.get("/ok-but-bad-json").mock(return_value=Response(
+                200, 
+                text="Not JSON", 
+                headers={"Content-Type": "application/json"}
+            ))
+            
+            res = await api_key_client.request("GET", "ok-but-bad-json")
+            assert res == "Not JSON"
 # --- URL Helpers Tests ---
 
 def test_api_base_url_logic(monkeypatch):

@@ -69,6 +69,16 @@ async def test_create_item_full_enrichment(mock_client):
     payload = kwargs["json"]
     assert payload["notes"] == "Merged"
     assert payload["purchasePrice"] == "9.99"
+    # Ensure the 0001 dates are sent to prevent Go-backend issues
+    assert payload["purchaseTime"] == "0001-01-01T00:00:00Z"
+    assert payload["warrantyExpires"] == "0001-01-01T00:00:00Z"
+
+@pytest.mark.asyncio
+async def test_create_item_invalid_quantity(mock_client):
+    """Verify that providing an invalid quantity raises a ValueError."""
+    with pytest.raises(ValueError):
+        await handle_create_item(mock_client, name="Tool", locationId="l1", quantity="five")
+
 
 @pytest.mark.asyncio
 async def test_get_item_link_asset_id_detection(mock_client):
@@ -267,67 +277,141 @@ async def test_upload_attachment_from_url_failure(mock_client):
         assert "Error: Failed to download" in res
 
 @pytest.mark.asyncio
-async def test_generic_handlers_success(mock_client):
-    """Smoke test for all remaining handlers to ensure they call client correctly."""
-    # We use a side_effect to return list where needed and dict elsewhere
-    mock_client.request.side_effect = lambda m, e, **k: [] if e in ["locations", "labels", "notifiers", "maintenance", "currencies", "items"] else {"id": "1", "items": [], "itemCount": 0}
-    
+async def test_actions_handlers(mock_client):
     from homebox_mcp.tools.actions import handle_create_missing_thumbnails, handle_ensure_asset_ids
+    mock_client.request.return_value = {"completed": True}
+    
+    await handle_create_missing_thumbnails(mock_client)
+    mock_client.request.assert_called_with("POST", "actions/create-missing-thumbnails")
+    
+    await handle_ensure_asset_ids(mock_client)
+    mock_client.request.assert_called_with("POST", "actions/ensure-asset-ids")
+
+@pytest.mark.asyncio
+async def test_items_read_handlers(mock_client):
     from homebox_mcp.tools.items import (
         handle_get_item, handle_get_item_by_asset_id, handle_export_items, 
         handle_get_item_fields, handle_duplicate_item, handle_get_item_path, 
         handle_get_item_attachment_token, handle_get_item_maintenance
     )
-    from homebox_mcp.tools.locations import handle_list_locations, handle_get_locations_tree, handle_get_location, handle_create_location
-    from homebox_mcp.tools.labels import handle_list_labels, handle_create_label, handle_get_label
-    from homebox_mcp.tools.groups import handle_get_group, handle_update_group, handle_create_group_invitation, handle_export_bom
-    from homebox_mcp.tools.misc import handle_get_status, handle_list_currencies, handle_create_qrcode
-    from homebox_mcp.tools.maintenance import handle_query_all_maintenance
-    from homebox_mcp.tools.templates import handle_list_templates, handle_get_template, handle_create_item_from_template
-
-    # Actions
-    await handle_create_missing_thumbnails(mock_client)
-    await handle_ensure_asset_ids(mock_client)
+    mock_client.request.return_value = {"id": "1", "name": "Test"}
     
-    # Items
     await handle_get_item(mock_client, "1")
+    mock_client.request.assert_called_with("GET", "items/1")
+    
     await handle_get_item_by_asset_id(mock_client, "1")
+    mock_client.request.assert_called_with("GET", "assets/1")
+    
     await handle_export_items(mock_client)
+    mock_client.request.assert_called_with("GET", "items/export")
+    
     await handle_get_item_fields(mock_client)
+    mock_client.request.assert_called_with("GET", "items/fields")
+    
     await handle_duplicate_item(mock_client, "1")
+    assert mock_client.request.call_args[0] == ("POST", "items/1/duplicate")
+    
     await handle_get_item_path(mock_client, "1")
-    await handle_get_item_attachment_token(mock_client, "1", "1")
+    mock_client.request.assert_called_with("GET", "items/1/path")
+    
+    await handle_get_item_attachment_token(mock_client, "1", "att1")
+    mock_client.request.assert_called_with("GET", "items/1/attachments/att1")
+    
+    mock_client.request.return_value = []
     await handle_get_item_maintenance(mock_client, "1")
+    assert mock_client.request.call_args[1]["params"]["status"] == "both"
+
+@pytest.mark.asyncio
+async def test_locations_handlers(mock_client):
+    from homebox_mcp.tools.locations import handle_list_locations, handle_get_locations_tree, handle_get_location, handle_create_location
     
-    # Locations
+    mock_client.request.return_value = []
     await handle_list_locations(mock_client)
-    await handle_create_location(mock_client, "L")
+    mock_client.request.assert_called_with("GET", "locations", params={"filterChildren": "false"})
+    
     await handle_get_locations_tree(mock_client)
+    mock_client.request.assert_called_with("GET", "locations/tree", params={"withItems": "false"})
+    
+    mock_client.request.return_value = {"id": "1"}
     await handle_get_location(mock_client, "1")
+    mock_client.request.assert_called_with("GET", "locations/1")
     
-    # Labels
+    await handle_create_location(mock_client, "New Loc")
+    assert mock_client.request.call_args[1]["json"]["name"] == "New Loc"
+
+
+@pytest.mark.asyncio
+async def test_labels_handlers(mock_client):
+    from homebox_mcp.tools.labels import handle_list_labels, handle_create_label, handle_get_label
+    
+    mock_client.request.return_value = []
     await handle_list_labels(mock_client)
-    await handle_create_label(mock_client, "L")
+    mock_client.request.assert_called_with("GET", "labels")
+    
+    mock_client.request.return_value = {"id": "1"}
+    await handle_create_label(mock_client, "Label")
+    assert mock_client.request.call_args[1]["json"]["name"] == "Label"
+    
     await handle_get_label(mock_client, "1")
+    mock_client.request.assert_called_with("GET", "labels/1")
+
+@pytest.mark.asyncio
+async def test_groups_handlers(mock_client):
+    from homebox_mcp.tools.groups import handle_get_group, handle_update_group, handle_create_group_invitation, handle_export_bom
     
-    # Groups
+    mock_client.request.return_value = {}
     await handle_get_group(mock_client)
+    mock_client.request.assert_called_with("GET", "groups")
+    
     await handle_update_group(mock_client, name="G")
+    assert mock_client.request.call_args[1]["json"]["name"] == "G"
+    
     await handle_create_group_invitation(mock_client)
+    mock_client.request.assert_called_with("POST", "groups/invitations", json={"uses": 1})
+    
     await handle_export_bom(mock_client)
+    mock_client.request.assert_called_with("GET", "reporting/bill-of-materials")
+
+@pytest.mark.asyncio
+async def test_misc_handlers(mock_client):
+    from homebox_mcp.tools.misc import handle_get_status, handle_list_currencies, handle_create_qrcode
     
-    # Misc
+    mock_client.request.return_value = {}
     await handle_get_status(mock_client)
+    mock_client.request.assert_called_with("GET", "status")
+    
+    mock_client.request.return_value = []
     await handle_list_currencies(mock_client)
-    await handle_create_qrcode(mock_client, "T")
+    mock_client.request.assert_called_with("GET", "currencies")
     
-    # Maintenance
+    mock_client.request.return_value = "data:image..."
+    await handle_create_qrcode(mock_client, "Text")
+    assert mock_client.request.call_args[1]["params"]["data"] == "Text"
+
+@pytest.mark.asyncio
+async def test_maintenance_handlers(mock_client):
+    from homebox_mcp.tools.maintenance import handle_query_all_maintenance
+    mock_client.request.return_value = []
     await handle_query_all_maintenance(mock_client)
+    mock_client.request.assert_called_with("GET", "maintenance", params={"status": "both"})
+
+@pytest.mark.asyncio
+async def test_templates_handlers(mock_client):
+    from homebox_mcp.tools.templates import handle_list_templates, handle_get_template, handle_create_item_from_template
     
-    # Templates
+    mock_client.request.return_value = []
     await handle_list_templates(mock_client)
+    mock_client.request.assert_called_with("GET", "templates")
+    
+    mock_client.request.return_value = {"id": "1"}
     await handle_get_template(mock_client, "1")
+    mock_client.request.assert_called_with("GET", "templates/1")
+    
     await handle_create_item_from_template(mock_client, "1", "name", "loc")
+    payload = mock_client.request.call_args[1]["json"]
+    assert payload["name"] == "name"
+    assert payload["locationId"] == "loc"
+
 
 @pytest.mark.asyncio
 async def test_delete_handlers_success(mock_client):
@@ -377,3 +461,55 @@ async def test_import_items_logic(mock_client):
         with patch("os.path.exists", return_value=True):
             res = await handle_import_items(mock_client, "items.csv")
             assert "Failed to import" in res
+
+@pytest.mark.asyncio
+async def test_create_item_partial_failure(mock_client):
+    """Verify response when creation succeeds but update/enrichment fails."""
+    mock_client.request.side_effect = [
+        {"id": "itm-1", "name": "Minimal"}, # POST
+        Exception("Update Failed") # GET or PUT fails
+    ]
+    
+    # It might raise the exception or return the error depending on implementation.
+    # The current implementation lets the exception propagate from client.request if not caught.
+    with pytest.raises(Exception, match="Update Failed"):
+         await handle_create_item(mock_client, name="Tool", locationId="l1", notes="Enrich")
+
+@pytest.mark.asyncio
+async def test_upload_item_attachment_empty_file(mock_client):
+    """Verify handling of empty files."""
+    with patch("builtins.open", new_callable=MagicMock) as mock_open_file:
+        mock_file = mock_open_file.return_value.__enter__.return_value
+        mock_file.read.return_value = b""
+        
+        with patch("os.path.exists", return_value=True):
+            # Should proceed but upload empty content
+             mock_client.request.return_value = {"id": "att-1"}
+             res = await handle_upload_item_attachment(mock_client, "itm-1", "empty.txt")
+             assert "uploaded successfully" in res
+             args, kwargs = mock_client.request.call_args
+             assert kwargs["files"]["file"][1] == b""
+
+@pytest.mark.asyncio
+async def test_upload_item_attachment_unreadable_file(mock_client):
+    """Verify handling of file read permission errors."""
+    with patch("builtins.open", side_effect=PermissionError("Access Denied")):
+        with patch("os.path.exists", return_value=True):
+             res = await handle_upload_item_attachment(mock_client, "itm-1", "secret.txt")
+             assert "Failed to read local file" in res
+             assert "Access Denied" in res
+
+@pytest.mark.asyncio
+async def test_upload_item_attachment_fallback_mime(mock_client):
+    """Verify fallback to application/octet-stream and .bin when unknown."""
+    # Data URI with unknown mime
+    b64 = "data:unknown/type;base64,AAAA"
+    mock_client.request.return_value = {"id": "att-1"}
+    
+    res = await handle_upload_item_attachment(mock_client, "itm-1", b64)
+    assert "uploaded successfully" in res
+    
+    args, kwargs = mock_client.request.call_args
+    filename = kwargs["files"]["file"][0]
+    assert filename.endswith(".bin")
+

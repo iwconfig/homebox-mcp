@@ -136,7 +136,11 @@ class HomeboxClient:
                 return None
             content_type = response.headers.get("content-type", "")
             if "application/json" in content_type:
-                return response.json()
+                try:
+                    return response.json()
+                except json.JSONDecodeError:
+                    logger.warning(f"Failed to decode JSON from {url}, returning text instead.")
+                    return response.text
             elif "image/" in content_type:
                 import base64
                 b64 = base64.b64encode(response.content).decode("utf-8")
