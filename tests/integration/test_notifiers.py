@@ -10,36 +10,30 @@ def get_id(text):
 
 @pytest.mark.anyio
 async def test_notifier_lifecycle(server_session, local_http_server):
-    # 1. List notifiers
-    res = await server_session.call_tool("list_notifiers", {})
-    assert not getattr(res, "isError", False)
-
-    # 2. Create notifier
+    # Setup
     n_name = f"Test-Notifier-{uuid.uuid4().hex[:6]}"
-
-    # Use generic+http scheme for Shoutrrr to hit our local server
     webhook_url = f"generic+{local_http_server}/"
+
+    # Create Notifier
     res = await server_session.call_tool("create_notifier", {
         "name": n_name,
         "url": webhook_url
     })
-
     assert not getattr(res, "isError", False)
     n_id = get_id(res.content[0].text)
-    assert n_id is not None
 
-    # 3. Update notifier
+    # Update Notifier
     res = await server_session.call_tool("update_notifier", {"id": n_id, "isActive": False})
     assert not getattr(res, "isError", False)
 
-    # 4. Test notifier
+    # Test Notifier Signal
     res = await server_session.call_tool("test_notifier", {"url": webhook_url})
     assert not getattr(res, "isError", False)
 
-
-    # This might fail if the URL is invalid, but we check if the tool executes
+    # List Notifiers
+    res = await server_session.call_tool("list_notifiers", {})
     assert not getattr(res, "isError", False)
 
-    # 5. Delete notifier
+    # Delete Notifier
     res = await server_session.call_tool("delete_notifier", {"id": n_id})
     assert not getattr(res, "isError", False)

@@ -155,7 +155,7 @@ async def test_wipe_inventory_blocked_by_readonly():
 @pytest.mark.anyio
 async def test_wipe_inventory_full_cycle():
     """
-    Test the full wipe cycle using a DISPOSABLE test user.
+    Test the full wipe cycle using a disposable test user.
     This ensures we don't accidentally wipe real data.
     """
     test_email = f"test_{random_string()}@example.com"

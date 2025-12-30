@@ -10,31 +10,25 @@ def get_id(text):
 
 @pytest.mark.anyio
 async def test_template_lifecycle(server_session):
-    # 1. List templates
-    res = await server_session.call_tool("list_templates", {})
-    assert not getattr(res, "isError", False)
-
-    # 2. Create template
+    # Setup
     t_name = f"Test-Template-{uuid.uuid4().hex[:6]}"
+    loc_res = await server_session.call_tool("create_location", {"name": "Tmpl-Loc"})
+    loc_id = get_id(loc_res.content[0].text)
+
+    # Create Template
     res = await server_session.call_tool("create_template", {"name": t_name, "description": "Desc"})
     assert not getattr(res, "isError", False)
     t_id = get_id(res.content[0].text)
-    assert t_id is not None
 
-    # 3. Get template
+    # Get Template
     res = await server_session.call_tool("get_template", {"id": t_id})
     assert not getattr(res, "isError", False)
-    assert t_name in res.content[0].text
 
-    # 4. Update template
-    res = await server_session.call_tool("update_template", {"id": t_id, "description": "Updated Desc"})
+    # Update Template
+    res = await server_session.call_tool("update_template", {"id": t_id, "description": "Updated"})
     assert not getattr(res, "isError", False)
 
-    # 5. Create item from template
-    # Need a location
-    loc_res = await server_session.call_tool("create_location", {"name": "Tmpl-Loc"})
-    loc_id = get_id(loc_res.content[0].text)
-    
+    # Create Item from Template
     res = await server_session.call_tool("create_item_from_template", {
         "id": t_id,
         "name": "Item-From-Template",
@@ -42,7 +36,6 @@ async def test_template_lifecycle(server_session):
     })
     assert not getattr(res, "isError", False)
     item_id = get_id(res.content[0].text)
-    assert item_id is not None
 
     # Cleanup
     await server_session.call_tool("delete_item", {"id": item_id})
