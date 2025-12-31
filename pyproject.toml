@@ -8,7 +8,8 @@ dependencies = [
     "mcp",
     "httpx",
     "python-dotenv",
-    "pydantic"
+    "pydantic",
+    "respx"
 ]
 
 [project.scripts]
@@ -17,3 +18,7 @@ homebox-mcp = "homebox_mcp.server:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

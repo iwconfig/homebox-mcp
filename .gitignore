@@ -3,3 +3,6 @@
 __pycache__/
 *.pyc
 *.log
+
+# Test artifacts
+.coverage

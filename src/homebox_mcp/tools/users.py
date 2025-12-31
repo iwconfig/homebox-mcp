@@ -1,168 +1,131 @@
 import json
 import os
-import re
 from ..client import HomeboxClient
-from ..guardrails import protect_resource
+from ..guardrails import protect_resource, check_user_protection
 from mcp.server.fastmcp import FastMCP
 
-# Cache to remember IDs that matched protected emails during this process lifecycle
-_PROTECTED_ID_CACHE = set()
-_NON_DELETABLE_ID_CACHE = set()
+# --- Tool Handlers ---
 
-def _parse_user_list(env_val: str) -> set[str]:
-    """Parses a string containing emails or IDs (comma/space separated) into a set."""
-    if not env_val:
-        return set()
-    # Split by comma or whitespace
-    parts = re.split(r'[,\s]+', env_val)
-    return {p.strip() for p in parts if p.strip()}
+async def handle_get_user_self(client: HomeboxClient) -> str:
+    data = await client.request("GET", "users/self")
+    return json.dumps(data, indent=2)
 
-def _check_protection(user_data: dict, env_var: str, action_desc: str):
-    """Checks if the user is protected by the given environment variable or cache."""
-    val = os.getenv(env_var, "")
+@protect_resource(resource_type="users", action="update")
+async def handle_update_user_self(client: HomeboxClient, name: str = None, email: str = None) -> str:
+    current_user = await client.request("GET", "users/self")
+    user_item = current_user.get("item", {})
     
-    # Select the correct cache
-    is_non_deletable = "NON_DELETABLE" in env_var
-    cache = _NON_DELETABLE_ID_CACHE if is_non_deletable else _PROTECTED_ID_CACHE
+    # 1. Full Protection
+    check_user_protection(user_item, "update_user")
 
-    u_id = user_data.get("id")
-    u_email = user_data.get("email")
+    # 2. Delete Protection (Prevent Email Change)
+    if email and email != user_item.get("email"):
+         check_user_protection(user_item, "change_email")
+
+    payload = {
+        "name": name or user_item.get("name"),
+        "email": email or user_item.get("email")
+    }
     
-    print(f"DEBUG Protection Check: Action={action_desc}, Env={env_var}, User={u_email} ({u_id})")
+    data = await client.request("PUT", "users/self", json=payload)
+    return f"Updated User: {json.dumps(data, indent=2)}"
 
-    # 1. Check Cache first (Immutable ID protection)
-    if u_id and u_id in cache:
-        raise ValueError(f"Action '{action_desc}' is disabled for protected user ID '{u_id}' (matched via {env_var} previously).")
-
-    if not val:
-        return
-
-    protected_set = _parse_user_list(val)
-    print(f"DEBUG Protected Set: {protected_set}")
+@protect_resource(resource_type="users", action="update")
+async def handle_change_password(client: HomeboxClient, current: str, new: str) -> str:
+    current_user = await client.request("GET", "users/self")
+    user_item = current_user.get("item", {})
     
-    # 2. Check for "all" (case-insensitive)
-    if "all" in {s.lower() for s in protected_set}:
-        if u_id: cache.add(u_id) # Lock it in
-        raise ValueError(f"Action '{action_desc}' is disabled for ALL users via {env_var}.")
+    check_user_protection(user_item, "change_password")
 
-    # 3. Check ID Match
-    if u_id and u_id in protected_set:
-        cache.add(u_id) # Lock it in
-        raise ValueError(f"Action '{action_desc}' is disabled for user ID '{u_id}' via {env_var}.")
+    payload = {"current": current, "new": new}
+    try:
+        await client.request("PUT", "users/change-password", json=payload)
+        return "Password changed successfully"
+    except Exception as e:
+        if "404" in str(e):
+            return "Change password endpoint not found (404). This might not be supported in this Homebox version."
+        raise
 
-    # 4. Check Email Match
-    if u_email and u_email in protected_set:
-        if u_id: cache.add(u_id) # Lock it in for the future!
-        print(f"DEBUG: Matched email '{u_email}'. Locking ID {u_id}.")
-        raise ValueError(f"Action '{action_desc}' is disabled for user '{u_email}' via {env_var}.")
+@protect_resource(resource_type="users", action="create")
+async def handle_register_user(client: HomeboxClient, name: str, email: str, password: str) -> str:
+    # Safety Switch: Disabled by default
+    if os.getenv("HOMEBOX_ALLOW_USER_REGISTRATION", "").lower() != "true":
+        raise ValueError(
+            "Safety Lock: 'register_user' is disabled by default. "
+            "Set HOMEBOX_ALLOW_USER_REGISTRATION=true to enable."
+        )
+
+    payload = {"name": name, "email": email, "password": password}
+    await client.request("POST", "users/register", json=payload)
+    return "User registered successfully"
+
+async def handle_login_user(client: HomeboxClient, username: str, password: str) -> str:
+    await client.login_manual(username, password)
+    return f"Logged in as {username}"
+
+async def handle_logout_user(client: HomeboxClient) -> str:
+    client.logout()
+    return "Logged out. Reverted to default credentials."
+
+@protect_resource(resource_type="users", action="delete")
+async def handle_delete_user_self(client: HomeboxClient) -> str:
+    # Safety Switch: Disabled by default
+    if os.getenv("HOMEBOX_ALLOW_USER_DELETION", "").lower() != "true":
+        raise ValueError(
+            "Safety Lock: 'delete_user_self' is disabled by default. "
+            "Set HOMEBOX_ALLOW_USER_DELETION=true to enable."
+        )
+
+    current_user = await client.request("GET", "users/self")
+    user_item = current_user.get("item", {})
+    
+    # Guardrail Protection (Primary account, API key, Protected lists)
+    check_user_protection(user_item, "delete_user")
+
+    # API Key User Protection
+    if os.getenv("HOMEBOX_API_KEY") and client.api_key == os.getenv("HOMEBOX_API_KEY"):
+         raise ValueError("Cannot delete the user associated with the environment API Key.")
+
+    await client.request("DELETE", "users/self")
+    client.logout()
+    return "Account deleted successfully. Logged out."
+
+
+# --- Registration ---
 
 def register_users_tools(mcp: FastMCP, client: HomeboxClient):
 
     @mcp.tool()
     async def get_user_self() -> str:
         """Get current user info"""
-        data = await client.request("GET", "users/self")
-        return json.dumps(data, indent=2)
+        return await handle_get_user_self(client)
 
     @mcp.tool()
-    @protect_resource(resource_type="users", action="update")
     async def update_user_self(name: str = None, email: str = None) -> str:
         """Update current user account"""
-        # Check protection
-        current_user = await client.request("GET", "users/self")
-        user_item = current_user.get("item", {})
-        
-        # 1. Full Protection
-        _check_protection(user_item, "HOMEBOX_PROTECTED_USERS", "update_user")
-
-        # 2. Delete Protection (Prevent Email Change)
-        # We check if the user is non-deletable. If they are, and they try to change their email,
-        # we block it to prevent them from "escaping" the email-based check in a future run.
-        if email and email != user_item.get("email"):
-             _check_protection(user_item, "HOMEBOX_NON_DELETABLE_USERS", "change_email")
-
-        payload = {}
-
-        if name:
-          payload['name'] = name
-        if email:
-          payload['email'] = email
-
-        # payload = {
-        #     "name": name or user_item.get("name"),
-        #     "email": email or user_item.get("email")
-        # }
-        
-        data = await client.request("PUT", "users/self", json=payload)
-        return f"Updated User: {json.dumps(data, indent=2)}"
+        return await handle_update_user_self(client, name, email)
 
     @mcp.tool()
-    @protect_resource(resource_type="users", action="update")
-    async def change_password(oldPassword: str, newPassword: str) -> str:
+    async def change_password(current: str, new: str) -> str:
         """Change current user password"""
-        # Check protection
-        current_user = await client.request("GET", "users/self")
-        user_item = current_user.get("item", {})
-        
-        _check_protection(user_item, "HOMEBOX_PROTECTED_USERS", "change_password")
-
-        payload = {"current": oldPassword, "new": newPassword}
-        await client.request("PUT", "users/change-password", json=payload)
-        return "Password changed successfully"
+        return await handle_change_password(client, current, new)
 
     @mcp.tool()
-    @protect_resource(resource_type="users", action="create")
     async def register_user(name: str, email: str, password: str) -> str:
         """Register New User"""
-        payload = {"name": name, "email": email, "password": password}
-        await client.request("POST", "users/register", json=payload)
-        return "User registered successfully"
+        return await handle_register_user(client, name, email, password)
 
     @mcp.tool()
     async def login_user(username: str, password: str) -> str:
         """Log in as a different user"""
-        await client.login_manual(username, password)
-        return f"Logged in as {username}"
+        return await handle_login_user(client, username, password)
 
     @mcp.tool()
     async def logout_user() -> str:
         """Logout and revert to default user"""
-        client.logout()
-        return "Logged out. Reverted to default credentials."
+        return await handle_logout_user(client)
 
     @mcp.tool()
-    @protect_resource(resource_type="users", action="delete")
     async def delete_user_self() -> str:
-        """Delete Account. Prevent deletion of the primary user defined in environment."""
-        # Safety check
-        current_user = await client.request("GET", "users/self")
-        user_item = current_user.get("item", {})
-        
-        u_email = user_item.get("email")
-        u_username = user_item.get("username")
-        
-        # 1. Environment User Protection (Default)
-        env_username = os.getenv("HOMEBOX_USERNAME")
-        match = False
-        if env_username:
-            if u_email and u_email == env_username:
-                match = True
-            elif u_username and u_username == env_username:
-                match = True
-        
-        if match:
-             raise ValueError(f"Cannot delete the primary user ({env_username}) defined in environment variables.")
-        
-        # 2. API Key User Protection
-        if os.getenv("HOMEBOX_API_KEY") and client.api_key == os.getenv("HOMEBOX_API_KEY"):
-             raise ValueError("Cannot delete the user associated with the environment API Key.")
-
-        # 3. Protected Users (Modifications + Deletion)
-        _check_protection(user_item, "HOMEBOX_PROTECTED_USERS", "delete_user")
-
-        # 4. Nondeletable Users (Deletion only)
-        _check_protection(user_item, "HOMEBOX_NON_DELETABLE_USERS", "delete_user")
-
-        await client.request("DELETE", "users/self")
-        client.logout()
-        return "Account deleted successfully. Logged out."
+        """Delete Account. Prevent deletion of protected accounts."""
+        return await handle_delete_user_self(client)

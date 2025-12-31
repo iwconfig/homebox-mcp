@@ -38,7 +38,68 @@ The guardrails follow a three-tier lockdown strategy to balance flexibility and 
 
 - **Important Limitation**: Protection applies to the **direct target** of the action. Deleting a parent container (like a Location) will still delete its children (Items), even if the children are protected by ID.
 
+## Date: 2025-12-28
+
+### Feature: Comprehensive Test Suite & Stability
+- **Testing Infrastructure**:
+    - Migrated to `pytest` with `anyio` for modular, asynchronous testing.
+    - Achieved **100% Tool Coverage**: Every one of the ~70 registered tools is now exercised by the test suite.
+    - Implemented a **Local Webhook Receiver**: Added a `local_http_server` fixture in `conftest.py` to allow offline testing of the Notifier feature using `generic+http://`.
+- **API Realignment (Source Code Verified)**:
+    - **Barcode Search**: Discovered that the Homebox decoder specifically looks for the `productEAN` query parameter, despite documentation stating `data`.
+    - **Notifier Testing**: Discovered that `url` is required in the JSON request body for the test endpoint.
+    - **Data Types**: Fixed `500` errors caused by strict JSON unmarshaling in Homebox (Go) by converting numeric fields like `purchasePrice` and `cost` to strings for specific tools.
+- **Bug Fixes**:
+    - Ensured `PUT` requests for Users and Item Attachments include all existing required fields to prevent validation failures.
+    - Implemented graceful handling for `404` (Currency/Password change) and `500` (Barcode Search Panic) errors.
+    - Added missing `get_item_attachment_token` tool.
+
+## Date: 2025-12-29
+
+### Feature: Dangerous Action Protection
+- **Implemented `wipe_inventory`**: Added the `POST /v1/actions/wipe-inventory` endpoint.
+    - **Guardrails**: Classified as `resource_type="inventory"` and `action="delete"`.
+    - **Protection**: Can be blocked by setting `HOMEBOX_READONLY_RESOURCES=inventory` or `HOMEBOX_NON_DELETABLE_RESOURCES=inventory` (or `all`).
+- **Testing**: Added `tests/test_wipe_guardrails.py` to verify that guardrails correctly block this dangerous action when configured.
+
+### Feature: Tiered Safety Switches & Refined Hierarchy
+- **Tier 1: Safety Switches (Feature Flags)**:
+    - Added mandatory environment variables to enable destructive tools. All default to `false`.
+    - `HOMEBOX_ALLOW_WIPE_INVENTORY`: Enables `wipe_inventory`.
+    - `HOMEBOX_ALLOW_USER_DELETION`: Enables `delete_user_self`.
+    - `HOMEBOX_ALLOW_USER_REGISTRATION`: Enables `register_user`.
+- **Tier 2: Universal Resource Guardrails**:
+    - `HOMEBOX_READONLY_RESOURCES`: Blocks Create, Update, Delete for whole types.
+    - `HOMEBOX_NON_DELETABLE_RESOURCES`: Blocks Delete for whole types.
+- **Tier 3: Instance Protection**:
+    - `HOMEBOX_PROTECTED_USERS`: Blocks modification and deletion of specific accounts.
+    - **Refined Hierarchy**: Destructive actions like `wipe_inventory` now automatically check if the *authenticated user* is protected. The agent cannot wipe the inventory of a protected account even if the safety switch is on.
+- **Code Consolidation**: Moved user protection logic into `guardrails.py` for cross-tool reuse.
+
+## Date: 2025-12-30
+
+### Feature: Test Suite Hardening
+- **Refactored `test_generic_handlers_success`**: Replaced the loop-based smoke test with granular, parametrized tests for each tool group (items, locations, labels, etc.) to ensure specific parameters are correctly passed to the client.
+- **Enhanced Data Validation Tests**:
+    - **Zero-Dates**: `test_create_item_full_enrichment` now explicitly asserts that `purchaseTime`, `warrantyExpires`, etc., are set to `0001-01-01T00:00:00Z` to prevents backend issues.
+    - **Bad Data**: Added tests for invalid inputs (`quantity="five"`) and file operations (empty/unreadable files).
+    - **Partial Failures & Rollback**: Added `test_create_item_rollback` to verify that if item enrichment fails, the partially created item is automatically deleted.
+    - **Edge Cases**: Added `test_upload_attachment_from_url_no_extension` to verify that file extensions are correctly appended when missing from the URL but the MIME type is known.
+- **Integration Test Improvements**:
+    - Added `test_item_import_success` using real CSV files.
+    - Discovered that the Homebox CSV importer requires `HB.` prefixed headers (e.g., `HB.name`, `HB.location`) for successful matching.
+- **Refinement**:
+    - **Create Item**: Removed redundant `GET` request between `POST` and `PUT` steps, using the `POST` response directly to improve performance.
+- **Robust Client Error Handling**:
+    - Updated `HomeboxClient.request` to gracefully handle `json.JSONDecodeError`. If the server returns `Content-Type: application/json` but the body is HTML or a raw stack trace (common in 500 errors), the client now logs a warning and returns the text instead of crashing.
+    - Added `test_request_json_decode_error` to verify this resilience.
+
 ## Usage
+
+### Testing with Pytest
+```bash
+PYTHONPATH=src .venv/bin/pytest tests/
+```
 
 ### Testing with MCP Inspector
 Run the following to test tools in a web UI:
@@ -48,12 +109,17 @@ npx @modelcontextprotocol/inspector .venv/bin/python -m homebox_mcp.server
 
 ## Lessons Learned
 - **Python f-strings**: Always check for double braces `{{` vs `{` in format strings to avoid `TypeError: unhashable type: 'dict'` or syntax errors.
+- **Go Struct Tags**: The actual parameter keys decoded by the Homebox backend sometimes mismatch the Swagger documentation (e.g., `productEAN` vs `data`). Always verify against the backend source code when debugging `decoding error` or `404`.
+- **Strict JSON Unmarshaling**: Some Go backends require numeric fields to be quoted as strings if they use the `,string` struct tag.
+- **Task Isolation**: When using `anyio` with `pytest`, ensure server sessions are closed within the same task they were created in to avoid `RuntimeError`.
+- **Mocking Fidelity**: Generic smoke tests that loop over tools are insufficient for verifying parameter mapping. Explicit assertions for every tool call (checking `params` and `json` payloads) are necessary to catch regressions in argument handling.
 
 
 ### Manual Testing
-A test script `test_server.py` is provided. Run it with:
+Individual tests are located in `./tests`. You can run them by category:
 ```bash
-PYTHONPATH=src .venv/bin/python test_server.py
+.venv/bin/pytest tests/test_items.py
+.venv/bin/pytest tests/test_user_guardrails.py
 ```
 
 ### Running over SSE
@@ -84,8 +150,9 @@ Point your client to `http://localhost:8000/sse`.
 - [x] POST /v1/actions/ensure-import-refs
 - [x] POST /v1/actions/set-primary-photos
 - [x] POST /v1/actions/zero-item-time-fields
+- [x] POST /v1/actions/wipe-inventory (Protected by guardrails)
 - [x] GET /v1/assets/{id}
-- [x] GET /v1/currency
+- [x] GET /v1/currencies
 - [x] GET /v1/groups
 - [x] PUT /v1/groups
 - [x] POST /v1/groups/invitations
@@ -104,7 +171,7 @@ Point your client to `http://localhost:8000/sse`.
 - [x] DELETE /v1/items/{id}
 - [x] PATCH /v1/items/{id}
 - [x] POST /v1/items/{id}/attachments (Multipart)
-- [x] GET /v1/items/{id}/attachments/{attachment_id} (Info only)
+- [x] GET /v1/items/{id}/attachments/{attachment_id} (Token Retrieval)
 - [x] PUT /v1/items/{id}/attachments/{attachment_id}
 - [x] DELETE /v1/items/{id}/attachments/{attachment_id}
 - [x] POST /v1/items/{id}/duplicate
@@ -149,7 +216,7 @@ Point your client to `http://localhost:8000/sse`.
 - [ ] GET /v1/users/login/oidc/callback (Redirect - Not suitable)
 - [x] POST /v1/users/logout
 - [x] GET /v1/users/refresh (Handled by Client)
-- [x] POST /v1/users/register
+- [x] POST /v1/users/register (Protected by safety switch)
 - [x] GET /v1/users/self
 - [x] PUT /v1/users/self
-- [x] DELETE /v1/users/self (Safe Mode)
+- [x] DELETE /v1/users/self (Safe Mode + Safety switch)
