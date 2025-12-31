@@ -51,8 +51,7 @@ async def test_wipe_inventory_success_flow(mock_client, monkeypatch):
 async def test_create_item_full_enrichment(mock_client):
     """Verify the two-step creation and merging of all fields."""
     mock_client.request.side_effect = [
-        {"id": "itm-1"}, # POST (minimal)
-        { # GET (for merge)
+        { # POST returns created item (now used as base)
             "id": "itm-1", "name": "Tool", "location": {"id": "l1"}, 
             "labels": [{"id": "lab1"}], "quantity": 1
         },
@@ -64,14 +63,44 @@ async def test_create_item_full_enrichment(mock_client):
         notes="Merged", purchasePrice=9.99
     )
     
-    # Check PUT payload (3rd call)
-    args, kwargs = mock_client.request.call_args_list[2]
+    # Check PUT payload (2nd call, since GET was removed)
+    args, kwargs = mock_client.request.call_args_list[1]
     payload = kwargs["json"]
     assert payload["notes"] == "Merged"
     assert payload["purchasePrice"] == "9.99"
     # Ensure the 0001 dates are sent to prevent Go-backend issues
     assert payload["purchaseTime"] == "0001-01-01T00:00:00Z"
     assert payload["warrantyExpires"] == "0001-01-01T00:00:00Z"
+
+@pytest.mark.asyncio
+async def test_get_item_link_multiple_matches(mock_client):
+    """Verify behavior when multiple items match the query."""
+    mock_client.request.return_value = {
+        "items": [
+            {"id": "1", "name": "Cable A", "assetId": "A1"},
+            {"id": "2", "name": "Cable B", "assetId": "A2"}
+        ]
+    }
+    res = await handle_get_item_link(mock_client, query="Cable")
+    assert "Found 2 matches" in res
+    assert "Cable A" in res
+    assert "Cable B" in res
+
+@pytest.mark.asyncio
+async def test_create_item_rollback(mock_client):
+    """Verify that item is deleted if enrichment fails."""
+    mock_client.request.side_effect = [
+        {"id": "itm-1", "name": "Minimal"}, # POST
+        Exception("Enrichment Failed"), # PUT
+        None # DELETE (rollback)
+    ]
+    
+    with pytest.raises(Exception, match="Enrichment Failed"):
+         await handle_create_item(mock_client, name="Tool", locationId="l1", notes="Enrich")
+         
+    # Verify 3 calls: POST, PUT (fail), DELETE
+    assert mock_client.request.call_count == 3
+    assert mock_client.request.call_args_list[2][0] == ("DELETE", "items/itm-1")
 
 @pytest.mark.asyncio
 async def test_create_item_invalid_quantity(mock_client):
@@ -461,19 +490,6 @@ async def test_import_items_logic(mock_client):
         with patch("os.path.exists", return_value=True):
             res = await handle_import_items(mock_client, "items.csv")
             assert "Failed to import" in res
-
-@pytest.mark.asyncio
-async def test_create_item_partial_failure(mock_client):
-    """Verify response when creation succeeds but update/enrichment fails."""
-    mock_client.request.side_effect = [
-        {"id": "itm-1", "name": "Minimal"}, # POST
-        Exception("Update Failed") # GET or PUT fails
-    ]
-    
-    # It might raise the exception or return the error depending on implementation.
-    # The current implementation lets the exception propagate from client.request if not caught.
-    with pytest.raises(Exception, match="Update Failed"):
-         await handle_create_item(mock_client, name="Tool", locationId="l1", notes="Enrich")
 
 @pytest.mark.asyncio
 async def test_upload_item_attachment_empty_file(mock_client):

@@ -144,6 +144,31 @@ async def test_item_export_import(server_session):
     assert "Error" in res.content[0].text
 
 @pytest.mark.anyio
+async def test_item_import_success(server_session, tmp_path):
+    """Verify that the system can import items from a valid CSV file."""
+    # Create a location first to ensure it exists
+    loc_name = f"ImportLoc-{uuid.uuid4().hex[:6]}"
+    await server_session.call_tool("create_location", {"name": loc_name})
+
+    # Create a dummy CSV file with correct HB. prefixes
+    csv_file = tmp_path / "inventory.csv"
+    csv_file.write_text(f"HB.name,HB.quantity,HB.location\nTestImportItem,5,{loc_name}")
+    
+    # Run the tool with the real path
+    res = await server_session.call_tool("import_items", {"file_path": str(csv_file)})
+    assert not getattr(res, "isError", False)
+    assert "imported successfully" in res.content[0].text
+    
+    # Verify item was created
+    list_res = await server_session.call_tool("list_items", {"q": "TestImportItem"})
+    assert "TestImportItem" in list_res.content[0].text
+    
+    # Cleanup (optional but good practice)
+    # Get ID of created item? List items returns text, parsing ID is hard without regex.
+    # The session is transient or cleanable? 
+    # For now, relying on eventual cleanup or non-interference.
+
+@pytest.mark.anyio
 async def test_item_maintenance_integration(server_session):
     # Maintenance Log
     loc_res = await server_session.call_tool("create_location", {"name": "Maint-Test-Loc"})

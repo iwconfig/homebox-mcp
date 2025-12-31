@@ -104,29 +104,48 @@ async def handle_create_item(
     created_item = await client.request("POST", "items", json=create_payload)
     item_id = created_item["id"]
     
-    existing = await client.request("GET", f"items/{item_id}")
-    update_payload = existing.copy()
-    
-    if "location" in existing and existing["location"]:
-        update_payload["locationId"] = existing["location"]["id"]
-    if "parent" in existing and existing["parent"]:
-        update_payload["parentId"] = existing["parent"]["id"]
-    if "labels" in existing and existing["labels"]:
-        update_payload["labelIds"] = [l["id"] for l in existing["labels"]]
-    
-    if notes is not None: update_payload["notes"] = notes
-    if serialNumber is not None: update_payload["serialNumber"] = serialNumber
-    if modelNumber is not None: update_payload["modelNumber"] = modelNumber
-    if manufacturer is not None: update_payload["manufacturer"] = manufacturer
-    if purchasePrice is not None: update_payload["purchasePrice"] = str(purchasePrice)
-    
-    for key in ["purchaseFrom", "soldTo", "soldNotes", "warrantyDetails"]:
-        if key not in update_payload: update_payload[key] = ""
-    for key in ["purchaseTime", "soldTime", "warrantyExpires"]:
-        if key not in update_payload: update_payload[key] = "0001-01-01T00:00:00Z"
+    try:
+        # Use the created item as the base for update, avoiding redundant GET
+        update_payload = created_item.copy()
+        
+        # Ensure ID-based fields are correctly mapped if the server returned full objects
+        if "location" in created_item and created_item["location"]:
+            update_payload["locationId"] = created_item["location"]["id"]
+        elif locationId:
+            update_payload["locationId"] = locationId
+            
+        if "parent" in created_item and created_item["parent"]:
+            update_payload["parentId"] = created_item["parent"]["id"]
+        elif parentId:
+            update_payload["parentId"] = parentId
+            
+        if "labels" in created_item and created_item["labels"]:
+            update_payload["labelIds"] = [l["id"] for l in created_item["labels"]]
+        elif labelIds:
+             update_payload["labelIds"] = labelIds
+        
+        if notes is not None: update_payload["notes"] = notes
+        if serialNumber is not None: update_payload["serialNumber"] = serialNumber
+        if modelNumber is not None: update_payload["modelNumber"] = modelNumber
+        if manufacturer is not None: update_payload["manufacturer"] = manufacturer
+        if purchasePrice is not None: update_payload["purchasePrice"] = str(purchasePrice)
+        
+        for key in ["purchaseFrom", "soldTo", "soldNotes", "warrantyDetails"]:
+            if key not in update_payload: update_payload[key] = ""
+        for key in ["purchaseTime", "soldTime", "warrantyExpires"]:
+            if key not in update_payload: update_payload[key] = "0001-01-01T00:00:00Z"
 
-    final_item = await client.request("PUT", f"items/{item_id}", json=update_payload)
-    return f"Created and Enriched Item: {json.dumps(final_item, indent=2)}"
+        final_item = await client.request("PUT", f"items/{item_id}", json=update_payload)
+        return f"Created and Enriched Item: {json.dumps(final_item, indent=2)}"
+        
+    except Exception as e:
+        # Rollback: Delete the partially created item
+        try:
+            await client.request("DELETE", f"items/{item_id}")
+        except Exception:
+            # Swallow delete error to raise the original enrichment error
+            pass
+        raise e
 
 @protect_resource(resource_type="items", action="update")
 async def handle_update_item(
