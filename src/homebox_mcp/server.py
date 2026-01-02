@@ -7,6 +7,8 @@ from mcp.server.fastmcp.server import Settings
 from mcp.server.transport_security import TransportSecuritySettings
 from .client import HomeboxClient
 from .tools import register_all_tools
+from .resources import register_all_resources
+from .prompts import register_prompts
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -30,6 +32,8 @@ client = HomeboxClient()
 
 # This will trigger the registration of tools to the mcp instance
 register_all_tools(mcp, client)
+register_all_resources(mcp, client)
+register_prompts(mcp)
 
 def main():
     """Main entry point for the homebox-mcp server."""

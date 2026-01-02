@@ -15,3 +15,7 @@ def register_all_tools(mcp: FastMCP, client: HomeboxClient):
     templates.register_templates_tools(mcp, client)
     users.register_users_tools(mcp, client)
     maintenance.register_maintenance_tools(mcp, client)
+    
+    # New Vision Tools
+    from . import images
+    images.register_image_tools(mcp, client)

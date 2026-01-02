@@ -9,7 +9,8 @@ dependencies = [
     "httpx",
     "python-dotenv",
     "pydantic",
-    "respx"
+    "respx",
+    "Pillow"
 ]
 
 [project.scripts]
