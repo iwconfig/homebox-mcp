@@ -13,21 +13,105 @@ from ..resources.inbox import get_inbox_items
 from ..resources.images import fetch_and_anonymize_image
 from mcp.server.fastmcp import FastMCP
 
+# --- Utilities ---
+
+def get_id(text: str) -> str:
+    """Helper to extract UUID from tool responses, prioritizing JSON parsing."""
+    if not text:
+        return None
+    
+    # 1. Try to extract and parse JSON block if present
+    try:
+        start = text.find('{')
+        end = text.rfind('}')
+        if start != -1 and end != -1:
+            data = json.loads(text[start:end+1])
+            if isinstance(data, dict) and 'id' in data:
+                return data['id']
+            if isinstance(data, dict) and 'item' in data and isinstance(data['item'], dict):
+                return data['item'].get('id')
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # 2. Regex fallback for plain text or malformed snippets
+    m = re.search(r'"id":\s*"([a-f0-9\-]+)"', text)
+    if m:
+        return m.group(1)
+    m = re.search(r'ID: ([a-f0-9\-]+)', text)
+    if m:
+        return m.group(1)
+    return None
+
 # --- Tool Handlers ---
 
 async def handle_get_inbox_queue(client: HomeboxClient) -> str:
-    """Returns a list of items in the Inbox that require processing."""
+    """Returns a unified list of items in the Inbox (from Homebox API and local directory) that require processing."""
     return await get_inbox_items(client)
 
-async def handle_get_item_attachment_image(client: HomeboxClient, item_id: str, attachment_id: str) -> Any:
-    """Returns the binary image data for an attachment."""
-    from PIL import Image
+async def handle_get_inbox_image(client: HomeboxClient, id: str, attachment_id: str = None) -> Any:
+    """Returns the binary image data for an inbox item (local or server)."""
     from mcp.types import ImageContent
     import base64
     
-    data = await fetch_and_anonymize_image(client, item_id, attachment_id)
+    # attachment_id is only needed for source='homebox'
+    data = await fetch_and_anonymize_image(client, id, attachment_id)
     b64 = base64.b64encode(data).decode("utf-8")
     return [ImageContent(type="image", data=b64, mimeType="image/jpeg")]
+
+async def handle_finalize_processed_item(
+    client: HomeboxClient,
+    id: str,
+    name: str,
+    locationId: str,
+    description: str = None,
+    labelIds: list[str] = None,
+    notes: str = None,
+    source: str = "homebox"
+) -> str:
+    """
+    Finalizes an item by updating metadata and moving it to a new location.
+    If source is 'local', it handles the initial upload to Homebox.
+    Ensures the item is removed from the Inbox.
+    """
+    target_item_id = id
+    upload_msg = ""
+
+    if source == "local":
+        # 1. Create the item in Homebox first (in the Inbox location temporarily)
+        # Note: we use the target locationId immediately to save a move step if possible,
+        # but the tool's goal is to move it out of Inbox.
+        create_res = await handle_create_item(client, name=name, locationId=locationId)
+        target_item_id = get_id(create_res)
+        if not target_item_id:
+            return f"Error: Failed to create item for local file: {create_res}"
+            
+        # 2. Upload the local file as an attachment
+        inbox_dir = os.getenv("HOMEBOX_INBOX_DIRECTORY")
+        full_path = os.path.join(inbox_dir, id)
+        upload_res = await handle_upload_item_attachment(client, target_item_id, full_path, primary=True)
+        upload_msg = f" (File uploaded: {upload_res})"
+        
+        # 3. Apply additional metadata
+        res = await handle_update_item(
+            client, target_item_id, name=name, locationId=locationId, 
+            description=description, labelIds=labelIds, notes=notes
+        )
+        
+        # 4. Cleanup local file
+        try:
+            os.remove(full_path)
+            upload_msg += " Local file deleted."
+        except Exception as e:
+            upload_msg += f" Warning: Failed to delete local file: {e}"
+            
+        return f"Local file processed and item created in location {locationId}.{upload_msg}"
+    else:
+        # Standard API item move/update
+        res = await handle_update_item(
+            client, id, name=name, locationId=locationId, 
+            description=description, labelIds=labelIds, notes=notes
+        )
+        return f"Item finalized and moved to location {locationId}. {res}"
 
 async def handle_list_items(
     client: HomeboxClient,
@@ -402,13 +486,30 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
     
     @mcp.tool()
     async def get_inbox_queue() -> str:
-        """Returns a list of items in the Inbox that require processing (the heavy lifting)."""
+        """Returns a unified list of items in the Inbox (from Homebox API and local directory) that require processing."""
         return await handle_get_inbox_queue(client)
 
     @mcp.tool()
-    async def get_item_attachment_image(item_id: str, attachment_id: str) -> Any:
-        """Retrieve the binary image data for an item attachment (AI analysis)."""
-        return await handle_get_item_attachment_image(client, item_id, attachment_id)
+    async def get_inbox_image(id: str, attachment_id: str = None) -> Any:
+        """Retrieve the binary image data for an inbox item (local file or server attachment)."""
+        return await handle_get_inbox_image(client, id, attachment_id)
+
+    @mcp.tool()
+    async def finalize_processed_item(
+        id: str,
+        name: str,
+        locationId: str,
+        description: str = None,
+        labelIds: list[str] = None,
+        notes: str = None,
+        source: str = "homebox"
+    ) -> str:
+        """
+        Finalizes an item by updating metadata and moving it to a new location.
+        If source is 'local', it handles the initial upload to Homebox.
+        Ensures the item is removed from the Inbox.
+        """
+        return await handle_finalize_processed_item(client, id, name, locationId, description, labelIds, notes, source)
 
     @mcp.tool()
     async def list_items(

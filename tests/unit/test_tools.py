@@ -38,12 +38,12 @@ async def test_get_inbox_queue(mock_client):
         mock_get.assert_called_once_with(mock_client)
 
 @pytest.mark.asyncio
-async def test_get_item_attachment_image(mock_client):
-    from homebox_mcp.tools.items import handle_get_item_attachment_image
+async def test_get_inbox_image(mock_client):
+    from homebox_mcp.tools.items import handle_get_inbox_image
     from mcp.types import ImageContent
     with patch("homebox_mcp.tools.items.fetch_and_anonymize_image", new_callable=AsyncMock) as mock_fetch:
         mock_fetch.return_value = b"fake-jpeg"
-        res = await handle_get_item_attachment_image(mock_client, "itm-1", "att-1")
+        res = await handle_get_inbox_image(mock_client, "itm-1", "att-1")
         assert isinstance(res, list)
         assert isinstance(res[0], ImageContent)
         assert res[0].data == base64.b64encode(b"fake-jpeg").decode("utf-8")

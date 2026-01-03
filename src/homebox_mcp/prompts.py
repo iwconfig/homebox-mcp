@@ -21,14 +21,14 @@ def register_prompts(mcp: FastMCP):
              )
         
         return (
-            "Please check the Homebox Inbox for pending items:\n\n"
-            "1. Read the resource `homebox://inbox/queue` to get the list of items.\n"
-            "2. For each item found with an attachment:\n"
-            "   a. Access the image using the provided `resource` URI.\n"
-            "   b. Identify the object.\n"
-            "   c. Extract visible text (Serial Number, Model, Brand).\n"
-            "   d. Suggest a Name, Description, and relevant Labels.\n"
-            "   e. Determine a crop box [left, top, right, bottom] to remove background clutter.\n"
-            "   f. Use the `crop_item_image` tool to apply the crop.\n"
-            "   g. Use the `update_item` tool to apply the metadata.\n"
+            "Please check for pending items requiring processing:\n\n"
+            "### Instructions\n"
+            "1. **Get the Queue**: Run `get_inbox_queue` to see all items requiring processing (from server and local files).\n"
+            "2. **Process in Parallel**: You can process multiple items simultaneously for efficiency.\n"
+            "3. **Analyze and Finalize** for each item:\n"
+            "   a. Access the image using `get_inbox_image` (pass `id` and `attachment_id` from the queue).\n"
+            "   b. Identify the object and extract text (Serial, Model, Brand).\n"
+            "   c. Use `finalize_processed_item` to apply metadata AND move the item out of the Inbox to its permanent location.\n"
+            "      - Set `source` correctly based on the queue (usually 'local' or 'homebox').\n"
+            "      - DO NOT leave processed items in the 'Inbox' location.\n"
         )
