@@ -1,6 +1,7 @@
 import pytest
 import json
 import os
+import base64
 from unittest.mock import AsyncMock, patch, MagicMock
 from homebox_mcp.tools.actions import handle_wipe_inventory
 from homebox_mcp.tools.users import handle_register_user, handle_delete_user_self, handle_change_password
@@ -26,6 +27,27 @@ def mock_client():
     return client
 
 # --- Tool Logic Tests ---
+
+@pytest.mark.asyncio
+async def test_get_inbox_queue(mock_client):
+    from homebox_mcp.tools.items import handle_get_inbox_queue
+    with patch("homebox_mcp.tools.items.get_inbox_items", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = "[]"
+        res = await handle_get_inbox_queue(mock_client)
+        assert res == "[]"
+        mock_get.assert_called_once_with(mock_client)
+
+@pytest.mark.asyncio
+async def test_get_item_attachment_image(mock_client):
+    from homebox_mcp.tools.items import handle_get_item_attachment_image
+    from mcp.types import ImageContent
+    with patch("homebox_mcp.tools.items.fetch_and_anonymize_image", new_callable=AsyncMock) as mock_fetch:
+        mock_fetch.return_value = b"fake-jpeg"
+        res = await handle_get_item_attachment_image(mock_client, "itm-1", "att-1")
+        assert isinstance(res, list)
+        assert isinstance(res[0], ImageContent)
+        assert res[0].data == base64.b64encode(b"fake-jpeg").decode("utf-8")
+        mock_fetch.assert_called_once_with(mock_client, "itm-1", "att-1")
 
 @pytest.mark.asyncio
 async def test_wipe_inventory_safety_lock(mock_client, monkeypatch):
@@ -213,8 +235,8 @@ async def test_search_product_barcode_empty(mock_client):
 @pytest.mark.asyncio
 async def test_get_label_image_invalid_type(mock_client):
     """Verify error handling for invalid label types."""
-    res = await handle_get_label_image(mock_client, "invalid", "123")
-    assert "Error: Type must be" in res
+    with pytest.raises(ValueError, match="Type must be"):
+        await handle_get_label_image(mock_client, "invalid", "123")
 
 @pytest.mark.asyncio
 async def test_update_notifier_not_found(mock_client):
@@ -404,6 +426,7 @@ async def test_groups_handlers(mock_client):
 @pytest.mark.asyncio
 async def test_misc_handlers(mock_client):
     from homebox_mcp.tools.misc import handle_get_status, handle_list_currencies, handle_create_qrcode
+    from PIL import Image
     
     mock_client.request.return_value = {}
     await handle_get_status(mock_client)
@@ -413,8 +436,13 @@ async def test_misc_handlers(mock_client):
     await handle_list_currencies(mock_client)
     mock_client.request.assert_called_with("GET", "currencies")
     
-    mock_client.request.return_value = "data:image..."
-    await handle_create_qrcode(mock_client, "Text")
+    # Mock bytes response for QR code
+    mock_client.request.return_value = b"fake-png-data"
+    from mcp.types import ImageContent
+    res = await handle_create_qrcode(mock_client, "Text")
+    assert isinstance(res, list)
+    assert isinstance(res[0], ImageContent)
+    assert res[0].data == base64.b64encode(b"fake-png-data").decode("utf-8")
     assert mock_client.request.call_args[1]["params"]["data"] == "Text"
 
 @pytest.mark.asyncio

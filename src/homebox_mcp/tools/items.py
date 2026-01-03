@@ -5,12 +5,29 @@ import httpx
 import base64
 import re
 import io
+from typing import Any
 from datetime import datetime, timezone
 from ..client import HomeboxClient
 from ..guardrails import protect_resource
+from ..resources.inbox import get_inbox_items
+from ..resources.images import fetch_and_anonymize_image
 from mcp.server.fastmcp import FastMCP
 
 # --- Tool Handlers ---
+
+async def handle_get_inbox_queue(client: HomeboxClient) -> str:
+    """Returns a list of items in the Inbox that require processing."""
+    return await get_inbox_items(client)
+
+async def handle_get_item_attachment_image(client: HomeboxClient, item_id: str, attachment_id: str) -> Any:
+    """Returns the binary image data for an attachment."""
+    from PIL import Image
+    from mcp.types import ImageContent
+    import base64
+    
+    data = await fetch_and_anonymize_image(client, item_id, attachment_id)
+    b64 = base64.b64encode(data).decode("utf-8")
+    return [ImageContent(type="image", data=b64, mimeType="image/jpeg")]
 
 async def handle_list_items(
     client: HomeboxClient,
@@ -383,6 +400,16 @@ async def handle_import_items(client: HomeboxClient, file_path: str) -> str:
 
 def register_items_tools(mcp: FastMCP, client: HomeboxClient):
     
+    @mcp.tool()
+    async def get_inbox_queue() -> str:
+        """Returns a list of items in the Inbox that require processing (the heavy lifting)."""
+        return await handle_get_inbox_queue(client)
+
+    @mcp.tool()
+    async def get_item_attachment_image(item_id: str, attachment_id: str) -> Any:
+        """Retrieve the binary image data for an item attachment (AI analysis)."""
+        return await handle_get_item_attachment_image(client, item_id, attachment_id)
+
     @mcp.tool()
     async def list_items(
         q: str = None,

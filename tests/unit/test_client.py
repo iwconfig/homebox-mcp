@@ -71,7 +71,7 @@ async def test_request_204_no_content(api_key_client):
         assert res is None
 
 @pytest.mark.anyio
-async def test_request_image_base64(api_key_client):
+async def test_request_image_bytes(api_key_client):
     async with respx.mock(base_url="http://mock-homebox/api/v1") as respx_mock:
         img_data = b"fake-image-bytes"
         respx_mock.get("/img").mock(return_value=Response(
@@ -79,9 +79,7 @@ async def test_request_image_base64(api_key_client):
         ))
         
         res = await api_key_client.request("GET", "img")
-        assert res.startswith("data:image/png;base64,")
-        encoded = res.split(",")[1]
-        assert base64.b64decode(encoded) == img_data
+        assert res == img_data
 
 @pytest.mark.anyio
 async def test_request_plain_text(api_key_client):

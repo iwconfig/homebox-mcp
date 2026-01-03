@@ -1,4 +1,9 @@
 import json
+import io
+import base64
+from typing import Any, Union, List
+from PIL import Image
+from mcp.types import ImageContent
 from ..client import HomeboxClient
 from mcp.server.fastmcp import FastMCP
 
@@ -17,8 +22,12 @@ async def handle_list_currencies(client: HomeboxClient) -> str:
             return "Currency information endpoint not found (404). This might not be supported in this Homebox version."
         raise
 
-async def handle_create_qrcode(client: HomeboxClient, text: str) -> str:
+async def handle_create_qrcode(client: HomeboxClient, text: str) -> Union[List[ImageContent], str]:
     data = await client.request("GET", "qrcode", params={"data": text})
+    # If qrcode returns an image (likely), handle it
+    if isinstance(data, bytes):
+        b64 = base64.b64encode(data).decode("utf-8")
+        return [ImageContent(type="image", data=b64, mimeType="image/png")]
     return f"QR Code Data: {data}"
 
 async def handle_search_product_by_barcode(client: HomeboxClient, barcode: str) -> str:
@@ -31,9 +40,9 @@ async def handle_search_product_by_barcode(client: HomeboxClient, barcode: str) 
     except Exception as e:
         return f"Error searching product by barcode: {str(e)}"
 
-async def handle_get_label_image(client: HomeboxClient, type: str, id: str, print_label: bool = False) -> str:
+async def handle_get_label_image(client: HomeboxClient, type: str, id: str, print_label: bool = False) -> List[ImageContent]:
     if type not in ["item", "asset", "location"]:
-        return "Error: Type must be 'item', 'asset', or 'location'"
+        raise ValueError("Error: Type must be 'item', 'asset', or 'location'")
     
     path = ""
     if type == "asset":
@@ -45,7 +54,12 @@ async def handle_get_label_image(client: HomeboxClient, type: str, id: str, prin
         
     params = {"print": str(print_label).lower()}
     data = await client.request("GET", path, params=params)
-    return f"Label Image (Base64): {data}"
+    
+    if isinstance(data, bytes):
+        b64 = base64.b64encode(data).decode("utf-8")
+        return [ImageContent(type="image", data=b64, mimeType="image/png")]
+    
+    raise ValueError(f"Expected image data, but got: {type(data)}")
 
 
 # --- Registration ---
@@ -63,7 +77,7 @@ def register_misc_tools(mcp: FastMCP, client: HomeboxClient):
         return await handle_list_currencies(client)
 
     @mcp.tool()
-    async def create_qrcode(text: str) -> str:
+    async def create_qrcode(text: str) -> Any:
         """Create QR Code for a string"""
         return await handle_create_qrcode(client, text)
 
@@ -73,9 +87,9 @@ def register_misc_tools(mcp: FastMCP, client: HomeboxClient):
         return await handle_search_product_by_barcode(client, barcode)
 
     @mcp.tool()
-    async def get_label_image(type: str, id: str, print_label: bool = False) -> str:
+    async def get_label_image(type: str, id: str, print_label: bool = False) -> Any:
         """
-        Get Label Image (Base64).
+        Get Label Image.
         Type must be one of: 'item', 'asset', 'location'.
         """
         return await handle_get_label_image(client, type, id, print_label)

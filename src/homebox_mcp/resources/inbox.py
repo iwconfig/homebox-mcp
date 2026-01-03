@@ -6,56 +6,60 @@ from ..client import HomeboxClient
 
 logger = logging.getLogger(__name__)
 
+# Cache for Inbox Location ID to avoid redundant lookups
+_INBOX_ID_CACHE = None
+
 async def get_inbox_items(client: HomeboxClient) -> str:
     """Helper to find items in the Inbox location."""
-    inbox_name = os.getenv("HOMEBOX_INBOX_LOCATION", "Inbox")
+    global _INBOX_ID_CACHE
     
-    # 1. Find the Location ID for "Inbox"
-    # We might want to cache this, but for now let's just fetch.
-    # Note: list_locations usually returns a tree or list. 
-    # If list_locations supports filtering by name, great. If not, we iterate.
-    # Based on client implementation, getting all locations and filtering is safer.
+    inbox_name = os.getenv("HOMEBOX_INBOX_LOCATION", "Inbox")
+    inbox_id = os.getenv("HOMEBOX_INBOX_LOCATION_ID") or _INBOX_ID_CACHE
     
     try:
-        # Assuming we can get all locations. Using a large pageSize if possible or walking the tree.
-        # client.request("GET", "locations") usually returns a list or tree.
-        locations_data = await client.request("GET", "locations")
-        if isinstance(locations_data, dict) and "items" in locations_data:
-            locations = locations_data["items"]
-        else:
-            locations = locations_data
-            
-        inbox_id = None
-        
-        # Simple BFS or linear search if it's a flat list
-        queue = list(locations)
-        while queue:
-            loc = queue.pop(0)
-            if loc.get("name", "").lower() == inbox_name.lower():
-                inbox_id = loc["id"]
-                break
-            if "children" in loc:
-                queue.extend(loc["children"])
-                
         if not inbox_id:
-            return f"Error: Location '{inbox_name}' not found."
+            logger.info(f"Looking up location ID for '{inbox_name}'")
+            locations_data = await client.request("GET", "locations")
+            if isinstance(locations_data, dict) and "items" in locations_data:
+                locations = locations_data["items"]
+            else:
+                locations = locations_data
+                
+            # Simple search if it's a flat list
+            queue = list(locations)
+            while queue:
+                loc = queue.pop(0)
+                if loc.get("name", "").lower() == inbox_name.lower():
+                    inbox_id = loc["id"]
+                    _INBOX_ID_CACHE = inbox_id
+                    break
+                if "children" in loc:
+                    queue.extend(loc["children"])
+                    
+        if not inbox_id:
+            return f"Error: Location '{inbox_name}' not found. Please set HOMEBOX_INBOX_LOCATION or HOMEBOX_INBOX_LOCATION_ID."
 
         # 2. List items in that location
-        # Using the list_items endpoint which supports location filtering
-        data = await client.request("GET", "items", params={"locations": [inbox_id], "pageSize": 100})
-        items = data.get("items", [])
+        data = await client.request("GET", "items", params={"locations": [inbox_id], "pageSize": 50})
+        items_summary = data.get("items", [])
+        
+        if not items_summary:
+            return "[]"
+            
+        # Fetch details for each item to get attachments
+        import asyncio
+        tasks = [client.request("GET", f"items/{item['id']}") for item in items_summary]
+        items_details = await asyncio.gather(*tasks)
         
         # 3. Format as simplified JSON for the agent
         summary = []
-        for item in items:
+        for item in items_details:
             attachments = []
             for att in item.get("attachments", []):
-                # Construct the MCP resource URI for the image
-                # Format: homebox://items/{id}/attachments/{attachment_id}/image
                 resource_uri = f"homebox://items/{item['id']}/attachments/{att['id']}/image"
                 attachments.append({
                     "id": att["id"],
-                    "name": att.get("name"),
+                    "name": att.get("name") or att.get("title"),
                     "resource": resource_uri
                 })
                 

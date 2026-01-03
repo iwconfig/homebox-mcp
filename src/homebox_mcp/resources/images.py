@@ -60,13 +60,15 @@ async def fetch_and_anonymize_image(client: HomeboxClient, item_id: str, attachm
             headers = {"Authorization": f"Bearer {client.token}"}
             
             resp = await client.client.get(url, headers=headers)
-            resp.raise_for_status()
-            image_data = resp.content
+            # Check if 404, if so, maybe it's not the right endpoint. 
+            # But for now assume it works or we catch exception.
+            if resp.status_code == 200:
+                image_data = resp.content
             
-        else:
-            # Maybe it returned the content directly? (Unlikely based on name)
-            # If client.request returned a string starting with "data:image...", we could use that.
-            pass
+        elif isinstance(att_details, str) and att_details.startswith("data:"):
+            import base64
+            header, encoded = att_details.split(",", 1)
+            image_data = base64.b64decode(encoded)
 
         if not image_data:
             # Fallback: if the previous GET returned JSON, maybe it has a direct link?
@@ -105,7 +107,7 @@ async def fetch_and_anonymize_image(client: HomeboxClient, item_id: str, attachm
         raise RuntimeError(f"Failed to process image: {e}")
 
 def register_image_resource(mcp: FastMCP, client: HomeboxClient):
-    @mcp.resource("homebox://items/{item_id}/attachments/{attachment_id}/image")
+    @mcp.resource("homebox://items/{item_id}/attachments/{attachment_id}/image", mime_type="image/jpeg")
     async def get_item_image(item_id: str, attachment_id: str) -> bytes:
         """Returns the anonymized (metadata stripped) image data for an attachment."""
         return await fetch_and_anonymize_image(client, item_id, attachment_id)

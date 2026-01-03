@@ -21,7 +21,9 @@ async def test_misc_tools(server_session):
     # QR Code Generation
     res = await server_session.call_tool("create_qrcode", {"text": "test-mcp"})
     assert not getattr(res, "isError", False)
-    assert "data:image/" in res.content[0].text
+    # FastMCP returns PIL images as ImageContent
+    assert hasattr(res.content[0], "data")
+    assert "image/" in res.content[0].mimeType
 
     # Barcode Search
     res = await server_session.call_tool("search_product_by_barcode", {"barcode": "3017620422003"})
@@ -38,12 +40,14 @@ async def test_label_images_integration(server_session):
     # Location Label
     res = await server_session.call_tool("get_label_image", {"type": "location", "id": loc_id})
     assert not getattr(res, "isError", False)
-    assert "base64" in res.content[0].text
+    assert hasattr(res.content[0], "data")
+    assert "image/" in res.content[0].mimeType
 
     # Item Label
     res = await server_session.call_tool("get_label_image", {"type": "item", "id": item_id})
     assert not getattr(res, "isError", False)
-    assert "base64" in res.content[0].text
+    assert hasattr(res.content[0], "data")
+    assert "image/" in res.content[0].mimeType
 
     # Cleanup
     await server_session.call_tool("delete_item", {"id": item_id})

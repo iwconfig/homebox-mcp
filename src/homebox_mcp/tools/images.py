@@ -23,13 +23,26 @@ async def handle_crop_image(
         
     try:
         # 1. Download original
-        url = f"{client.api_base_url}/items/{item_id}/attachments/{attachment_id}/download"
-        headers = {"Authorization": f"Bearer {client.token}"}
-        resp = await client.client.get(url, headers=headers)
-        resp.raise_for_status()
+        # Try multiple methods like in resources/images.py
+        att_details = await client.request("GET", f"items/{item_id}/attachments/{attachment_id}")
         
+        image_data = b""
+        if isinstance(att_details, dict):
+            url = f"{client.api_base_url}/items/{item_id}/attachments/{attachment_id}/download"
+            headers = {"Authorization": f"Bearer {client.token}"}
+            resp = await client.client.get(url, headers=headers)
+            if resp.status_code == 200:
+                image_data = resp.content
+        elif isinstance(att_details, str) and att_details.startswith("data:"):
+            import base64
+            header, encoded = att_details.split(",", 1)
+            image_data = base64.b64decode(encoded)
+            
+        if not image_data:
+             return "Error: Could not download image content for cropping."
+
         # 2. Crop
-        with io.BytesIO(resp.content) as in_buffer:
+        with io.BytesIO(image_data) as in_buffer:
             img = Image.open(in_buffer)
             img = ImageOps.exif_transpose(img) # Ensure orientation is correct before cropping
             
@@ -45,13 +58,7 @@ async def handle_crop_image(
             file_name = f"cropped_{attachment_id}.{fmt.lower()}"
             mime_type = mimetypes.guess_type(file_name)[0] or "application/octet-stream"
 
-        # 3. Upload as NEW attachment (to be safe? or replace?)
-        # The prompt says "replaces the attachment".
-        # But `update_item_attachment` only updates metadata.
-        # To replace content, we usually delete and upload.
-        # Let's delete the old one and upload the new one.
-        
-        # Upload new
+        # 3. Upload as NEW attachment
         files = {'file': (file_name, new_content, mime_type)}
         data = {'name': file_name, 'type': 'photo', 'primary': 'true'}
         
