@@ -244,11 +244,23 @@ We provide 3 concrete "Input -> Action" mappings to handle edge cases:
 *   **Input**: `prompts.py` now accepts strict arguments.
 *   **Output**: Tools like `finalize_processed_item` now use Python `Literal["homebox", "local"]` to restrict valid inputs.
 *   **Return Values**: Tools return structured JSON objects (with `status`, `actions`, and `hint`) instead of plain strings, allowing the agent to self-correct if a step fails.
+*   **Object Extraction Workflow**: `finalize_processed_item` now supports **Rotation** and **Extraction** in a single turn.
+    *   `rotation`: Accepts any integer degree (e.g. `15`, `-42`) to fix image orientation. **Positive = Clockwise**.
+    *   `extracted_objects`: Accepts a list of object definitions (metadata + crop boxes) to efficiently process mixed sets. 
+        *   **Per-Object Rotation**: Each cutout can specify its own `rotation` degree applied AFTER cropping.
+        *   **Centering**: PIL engine uses `BICUBIC` resampling and `expand=True` to keep rotated objects centered.
+        *   **Automatic Coordinate Scaling**: Tools scale normalized coordinates (0-1000) to actual pixel resolution.
+    *   **Token Optimization**: Agent-facing photos are scaled to `HOMEBOX_MAX_IMAGE_DIMENSION` (default 1024px) to preserve context window and reduce latency.
+    *   The source item is automatically cleaned up upon success.
 
 ### 4. Logic Guardrails
+*   **Visual Chain-of-Thought (VCoT)**: The agent MUST describe the scene, coordinates, and angles before acting.
+*   **Leveling Rule**: Objects must be rotated to be perfectly vertical/horizontal.
+*   **Terminology**: Use **"Object Cutouts"** or **"Extracted Objects"** instead of "children" to avoid confusion with database hierarchy.
 *   **Identity Rule**: Never invent a brand for a generic object.
 *   **Location Strategy**:
     *   *Inbox Items*: Move to best guess.
     *   *Existing Items*: Preserve current location.
     *   *Sub-Items*: Inherit parent location.
 *   **Negative Signal**: Explicitly send `None` (null) for missing fields instead of "N/A".
+*   **Mixed Sets**: Use `extracted_objects` to maintain a quantity of 1 for individual items.

@@ -63,18 +63,23 @@ async def handle_finalize_processed_item(
     id: str,
     name: str,
     locationId: str,
-    description: str = None,
-    labelIds: list[str] = None,
-    notes: str = None,
-    source: Literal["homebox", "local"] = "homebox"
+    description: Optional[str] = None,
+    labelIds: Optional[list[str]] = None,
+    notes: Optional[str] = None,
+    source: Literal["homebox", "local"] = "homebox",
+    rotation: Optional[int] = None,
+    extracted_objects: Optional[list[dict]] = None,
+    manufacturer: Optional[str] = None,
+    modelNumber: Optional[str] = None,
+    serialNumber: Optional[str] = None
 ) -> str:
     """
     Finalizes an item by updating metadata and moving it to a new location.
     If source is 'local', it handles the initial upload to Homebox.
-    Ensures the item is removed from the Inbox.
-    Returns a JSON object with the result status.
+    Supports optional rotation and extracting multiple objects.
     """
-    target_item_id = id
+    from .images import handle_rotate_image, handle_split_item_from_image
+    
     result = {
         "status": "success",
         "item_id": id,
@@ -82,38 +87,76 @@ async def handle_finalize_processed_item(
     }
 
     try:
+        # 1. Handle Object Extraction (Exclusive mode)
+        if extracted_objects:
+            # For extraction, we need an attachment_id if source is homebox
+            att_id = None
+            if source == "homebox":
+                item = await client.request("GET", f"items/{id}")
+                atts = item.get("attachments", [])
+                if not atts:
+                    return json.dumps({"status": "error", "error": "Cannot extract objects from item without attachments."})
+                att_id = next((a["id"] for a in atts if a.get("primary")), atts[0]["id"])
+            
+            extract_res_json = await handle_split_item_from_image(client, id, extracted_objects, source, att_id)
+            extract_res = json.loads(extract_res_json)
+            
+            if extract_res["status"] == "error":
+                return extract_res_json
+                
+            result["actions"].append("extracted_into_objects")
+            result["extraction_details"] = extract_res
+            return json.dumps(result, indent=2)
+
+        # 2. Handle Rotation
+        if rotation and source == "homebox":
+            item = await client.request("GET", f"items/{id}")
+            atts = item.get("attachments", [])
+            if atts:
+                att_id = next((a["id"] for a in atts if a.get("primary")), atts[0]["id"])
+                rot_res = await handle_rotate_image(client, id, att_id, rotation)
+                if "Error" not in rot_res:
+                    result["actions"].append(f"rotated_{rotation}_deg")
+
+        # 3. Standard Processing (Metadata + Move)
         if source == "local":
-            # 1. Create the item in Homebox first (in the Inbox location temporarily)
-            # Note: we use the target locationId immediately to save a move step if possible,
-            # but the tool's goal is to move it out of Inbox.
-            create_res = await handle_create_item(client, name=name, locationId=locationId)
+            create_res = await handle_create_item(
+                client, name=name, locationId=locationId,
+                manufacturer=manufacturer, modelNumber=modelNumber, serialNumber=serialNumber
+            )
             target_item_id = get_id(create_res)
             
             if not target_item_id:
                 return json.dumps({
                     "status": "error",
                     "error": "Failed to create item for local file", 
-                    "details": create_res,
-                    "hint": "Check if the server is reachable and arguments are valid."
+                    "details": create_res
                 })
             
             result["item_id"] = target_item_id
             result["actions"].append("created_item")
                 
-            # 2. Upload the local file as an attachment
-            inbox_dir = os.getenv("HOMEBOX_INBOX_DIRECTORY")
-            full_path = os.path.join(inbox_dir, id)
-            upload_res = await handle_upload_item_attachment(client, target_item_id, full_path, primary=True)
+            full_path = None
+            if os.path.isabs(id):
+                full_path = id
+            else:
+                inbox_dir = os.getenv("HOMEBOX_INBOX_DIRECTORY")
+                if inbox_dir:
+                    full_path = os.path.join(inbox_dir, id)
+            
+            if not full_path or not os.path.exists(full_path):
+                 return json.dumps({"status": "error", "error": f"Local file not found: {id}"})
+
+            await handle_upload_item_attachment(client, target_item_id, full_path, primary=True)
             result["actions"].append("uploaded_file")
             
-            # 3. Apply additional metadata
             await handle_update_item(
                 client, target_item_id, name=name, locationId=locationId, 
-                description=description, labelIds=labelIds, notes=notes
+                description=description, labelIds=labelIds, notes=notes,
+                manufacturer=manufacturer, modelNumber=modelNumber, serialNumber=serialNumber
             )
             result["actions"].append("updated_metadata")
             
-            # 4. Cleanup local file
             try:
                 os.remove(full_path)
                 result["actions"].append("deleted_local_file")
@@ -121,21 +164,17 @@ async def handle_finalize_processed_item(
                 result["warnings"] = [f"Failed to delete local file: {str(e)}"]
                 
         else:
-            # Standard API item move/update
             await handle_update_item(
                 client, id, name=name, locationId=locationId, 
-                description=description, labelIds=labelIds, notes=notes
+                description=description, labelIds=labelIds, notes=notes,
+                manufacturer=manufacturer, modelNumber=modelNumber, serialNumber=serialNumber
             )
             result["actions"].append("updated_and_moved")
             
         return json.dumps(result, indent=2)
 
     except Exception as e:
-        return json.dumps({
-            "status": "error",
-            "error": str(e),
-            "hint": "Ensure all UUIDs (locationId, labelIds) are valid and exist in the system."
-        }, indent=2)
+        return json.dumps({"status": "error", "error": str(e)}, indent=2)
 
 async def handle_list_items(
     client: HomeboxClient,
@@ -382,6 +421,13 @@ async def handle_get_item_path(client: HomeboxClient, id: str) -> str:
 
 async def handle_get_item_attachment_token(client: HomeboxClient, id: str, attachment_id: str) -> str:
     data = await client.request("GET", f"items/{id}/attachments/{attachment_id}")
+    if isinstance(data, bytes):
+        import base64
+        return json.dumps({
+            "attachment_id": attachment_id,
+            "data_base64": base64.b64encode(data).decode("utf-8"),
+            "hint": "This is binary data encoded in base64."
+        }, indent=2)
     return json.dumps(data, indent=2)
 
 async def handle_delete_item_attachment(client: HomeboxClient, id: str, attachment_id: str) -> str:
@@ -523,18 +569,27 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         id: str,
         name: str,
         locationId: str,
-        description: str = None,
-        labelIds: list[str] = None,
-        notes: str = None,
-        source: Literal["homebox", "local"] = "homebox"
+        description: Optional[str] = None,
+        labelIds: Optional[list[str]] = None,
+        notes: Optional[str] = None,
+        source: Literal["homebox", "local"] = "homebox",
+        rotation: Optional[int] = None,
+        extracted_objects: Optional[list[dict]] = None,
+        manufacturer: Optional[str] = None,
+        modelNumber: Optional[str] = None,
+        serialNumber: Optional[str] = None
     ) -> str:
         """
         Finalizes an item by updating metadata and moving it to a new location.
         If source is 'local', it handles the initial upload to Homebox.
-        Ensures the item is removed from the Inbox.
+        Supports optional rotation (any degree, e.g. 15, -90) and extracting multiple objects via crop boxes.
+        If extracted_objects is used, the source item is deleted.
         Returns a JSON object with the result status and actions taken.
         """
-        return await handle_finalize_processed_item(client, id, name, locationId, description, labelIds, notes, source)
+        return await handle_finalize_processed_item(
+            client, id, name, locationId, description, labelIds, notes, source, rotation, extracted_objects,
+            manufacturer, modelNumber, serialNumber
+        )
 
     @mcp.tool()
     async def list_items(
@@ -562,15 +617,15 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
     async def create_item(
         name: str,
         locationId: str,
-        description: str = None,
+        description: Optional[str] = None,
         quantity: int = 1,
-        parentId: str = None,
-        labelIds: list[str] = None,
-        serialNumber: str = None,
-        modelNumber: str = None,
-        manufacturer: str = None,
-        purchasePrice: float = None,
-        notes: str = None
+        parentId: Optional[str] = None,
+        labelIds: Optional[list[str]] = None,
+        serialNumber: Optional[str] = None,
+        modelNumber: Optional[str] = None,
+        manufacturer: Optional[str] = None,
+        purchasePrice: Optional[float] = None,
+        notes: Optional[str] = None
     ) -> str:
         """Create a new item. Handles complex fields via a two-step create-and-update process. locationId is required."""
         return await handle_create_item(client, name, locationId, description, quantity, parentId, labelIds, serialNumber, modelNumber, manufacturer, purchasePrice, notes)
@@ -578,18 +633,18 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
     @mcp.tool()
     async def update_item(
         id: str,
-        name: str = None,
-        description: str = None,
-        quantity: int = None,
-        locationId: str = None,
-        parentId: str = None,
-        labelIds: list[str] = None,
-        serialNumber: str = None,
-        modelNumber: str = None,
-        manufacturer: str = None,
-        purchasePrice: float = None,
-        notes: str = None,
-        fields: list[dict] = None
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        quantity: Optional[int] = None,
+        locationId: Optional[str] = None,
+        parentId: Optional[str] = None,
+        labelIds: Optional[list[str]] = None,
+        serialNumber: Optional[str] = None,
+        modelNumber: Optional[str] = None,
+        manufacturer: Optional[str] = None,
+        purchasePrice: Optional[float] = None,
+        notes: Optional[str] = None,
+        fields: Optional[list[dict]] = None
     ) -> str:
         """Update an existing item (replaces existing with merged data)"""
         return await handle_update_item(client, id, name, description, quantity, locationId, parentId, labelIds, serialNumber, modelNumber, manufacturer, purchasePrice, notes, fields)

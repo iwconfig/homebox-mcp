@@ -71,10 +71,28 @@ async def get_inbox_items(client: HomeboxClient) -> str:
                     attachments = []
                     for att in item.get("attachments", []):
                         resource_uri = f"homebox://items/{item['id']}/attachments/{att['id']}/image"
+                        
+                        # Try to get dimensions if it's a photo
+                        width, height = None, None
+                        if att.get("type") == "photo":
+                            try:
+                                # We can't easily get dimensions without downloading the image
+                                # But we can fetch it once and cache it or just do it here
+                                from .images import fetch_and_anonymize_image
+                                img_bytes = await fetch_and_anonymize_image(client, item["id"], att["id"])
+                                from PIL import Image
+                                import io
+                                with Image.open(io.BytesIO(img_bytes)) as img:
+                                    width, height = img.size
+                            except Exception:
+                                pass
+
                         attachments.append({
                             "id": att["id"],
                             "name": att.get("name") or att.get("title"),
-                            "resource": resource_uri
+                            "resource": resource_uri,
+                            "width": width,
+                            "height": height
                         })
                         
                     combined_queue.append({

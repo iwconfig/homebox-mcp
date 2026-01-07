@@ -134,14 +134,14 @@ class HomeboxClient:
             response.raise_for_status()
             if response.status_code == 204:
                 return None
-            content_type = response.headers.get("content-type", "")
+            content_type = response.headers.get("content-type", "").lower()
             if "application/json" in content_type:
                 try:
                     return response.json()
                 except json.JSONDecodeError:
                     logger.warning(f"Failed to decode JSON from {url}, returning text instead.")
                     return response.text
-            elif "image/" in content_type:
+            elif "image/" in content_type or "application/octet-stream" in content_type:
                 return response.content
             else:
                 return response.text

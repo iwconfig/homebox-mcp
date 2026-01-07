@@ -4,7 +4,7 @@ from PIL import Image, ImageOps
 from unittest.mock import AsyncMock, MagicMock
 from homebox_mcp.resources.images import fetch_and_anonymize_image
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_image_anonymization_strips_exif():
     """Verify that fetch_and_anonymize_image removes EXIF metadata."""
     client = MagicMock()
@@ -27,13 +27,8 @@ async def test_image_anonymization_strips_exif():
     assert test_img.getexif().get(0x9286) == "Sensitive Metadata"
     
     # 2. Mock the client to return this image
-    # The client.request for metadata
-    client.request = AsyncMock(return_value={"id": "att1", "title": "test"})
-    # The raw httpx client for the download
-    mock_resp = MagicMock()
-    mock_resp.status_code = 200
-    mock_resp.content = img_with_exif
-    client.client.get = AsyncMock(return_value=mock_resp)
+    # The refactored code now calls client.request directly for the image bytes
+    client.request = AsyncMock(return_value=img_with_exif)
     
     # 3. Run through the anonymizer
     result_bytes = await fetch_and_anonymize_image(client, "item1", "att1")
