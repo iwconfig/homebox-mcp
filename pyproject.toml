@@ -13,6 +13,13 @@ dependencies = [
     "Pillow"
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "anyio",
+    "pytest-cov"
+]
+
 [project.scripts]
 homebox-mcp = "homebox_mcp.server:main"
 

@@ -220,3 +220,35 @@ Point your client to `http://localhost:8000/sse`.
 - [x] GET /v1/users/self
 - [x] PUT /v1/users/self
 - [x] DELETE /v1/users/self (Safe Mode + Safety switch)
+
+## Prompt Programming Strategy (Restored 2026-01-06)
+
+To eliminate hallucination and ensure deterministic behavior, the agent now operates under a strict "Prompt Programming" contract. This treats prompts as executable code rather than conversational text.
+
+### 1. The CO-STAR Framework
+We refactored the `analyze-item` prompt into six logical blocks:
+*   **C**ontext: Defines the agent's role (Inventory Assistant).
+*   **O**bjective: Specific goal (Process Inbox -> Identify -> Enriched -> Move).
+*   **S**tyle: Strict, deterministic, structured.
+*   **T**one: Professional, no guessing.
+*   **A**udience: The MCP Server (expecting JSON).
+*   **R**ules (Strict): Explicit constraints (Identity Rule, Location Strategy).
+
+### 2. Few-Shot Contrastive Examples ("Golden Examples")
+We provide 3 concrete "Input -> Action" mappings to handle edge cases:
+1.  **The Branded Product**: Shows how to extract Model/Serial numbers.
+2.  **The Generic Item**: Shows how to use `None` for missing brands (preventing "Unknown" hallucinations) and how to infer location.
+3.  **The Pre-Categorized Item**: Shows the "Location Preservation" rule (if an item is already sorted, keep its `locationId`).
+
+### 3. Strict Type Enforcement (Prompts as APIs)
+*   **Input**: `prompts.py` now accepts strict arguments.
+*   **Output**: Tools like `finalize_processed_item` now use Python `Literal["homebox", "local"]` to restrict valid inputs.
+*   **Return Values**: Tools return structured JSON objects (with `status`, `actions`, and `hint`) instead of plain strings, allowing the agent to self-correct if a step fails.
+
+### 4. Logic Guardrails
+*   **Identity Rule**: Never invent a brand for a generic object.
+*   **Location Strategy**:
+    *   *Inbox Items*: Move to best guess.
+    *   *Existing Items*: Preserve current location.
+    *   *Sub-Items*: Inherit parent location.
+*   **Negative Signal**: Explicitly send `None` (null) for missing fields instead of "N/A".

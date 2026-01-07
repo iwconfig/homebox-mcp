@@ -5,7 +5,7 @@ import httpx
 import base64
 import re
 import io
-from typing import Any
+from typing import Any, Literal, Optional
 from datetime import datetime, timezone
 from ..client import HomeboxClient
 from ..guardrails import protect_resource
@@ -66,52 +66,76 @@ async def handle_finalize_processed_item(
     description: str = None,
     labelIds: list[str] = None,
     notes: str = None,
-    source: str = "homebox"
+    source: Literal["homebox", "local"] = "homebox"
 ) -> str:
     """
     Finalizes an item by updating metadata and moving it to a new location.
     If source is 'local', it handles the initial upload to Homebox.
     Ensures the item is removed from the Inbox.
+    Returns a JSON object with the result status.
     """
     target_item_id = id
-    upload_msg = ""
+    result = {
+        "status": "success",
+        "item_id": id,
+        "actions": []
+    }
 
-    if source == "local":
-        # 1. Create the item in Homebox first (in the Inbox location temporarily)
-        # Note: we use the target locationId immediately to save a move step if possible,
-        # but the tool's goal is to move it out of Inbox.
-        create_res = await handle_create_item(client, name=name, locationId=locationId)
-        target_item_id = get_id(create_res)
-        if not target_item_id:
-            return f"Error: Failed to create item for local file: {create_res}"
+    try:
+        if source == "local":
+            # 1. Create the item in Homebox first (in the Inbox location temporarily)
+            # Note: we use the target locationId immediately to save a move step if possible,
+            # but the tool's goal is to move it out of Inbox.
+            create_res = await handle_create_item(client, name=name, locationId=locationId)
+            target_item_id = get_id(create_res)
             
-        # 2. Upload the local file as an attachment
-        inbox_dir = os.getenv("HOMEBOX_INBOX_DIRECTORY")
-        full_path = os.path.join(inbox_dir, id)
-        upload_res = await handle_upload_item_attachment(client, target_item_id, full_path, primary=True)
-        upload_msg = f" (File uploaded: {upload_res})"
-        
-        # 3. Apply additional metadata
-        res = await handle_update_item(
-            client, target_item_id, name=name, locationId=locationId, 
-            description=description, labelIds=labelIds, notes=notes
-        )
-        
-        # 4. Cleanup local file
-        try:
-            os.remove(full_path)
-            upload_msg += " Local file deleted."
-        except Exception as e:
-            upload_msg += f" Warning: Failed to delete local file: {e}"
+            if not target_item_id:
+                return json.dumps({
+                    "status": "error",
+                    "error": "Failed to create item for local file", 
+                    "details": create_res,
+                    "hint": "Check if the server is reachable and arguments are valid."
+                })
             
-        return f"Local file processed and item created in location {locationId}.{upload_msg}"
-    else:
-        # Standard API item move/update
-        res = await handle_update_item(
-            client, id, name=name, locationId=locationId, 
-            description=description, labelIds=labelIds, notes=notes
-        )
-        return f"Item finalized and moved to location {locationId}. {res}"
+            result["item_id"] = target_item_id
+            result["actions"].append("created_item")
+                
+            # 2. Upload the local file as an attachment
+            inbox_dir = os.getenv("HOMEBOX_INBOX_DIRECTORY")
+            full_path = os.path.join(inbox_dir, id)
+            upload_res = await handle_upload_item_attachment(client, target_item_id, full_path, primary=True)
+            result["actions"].append("uploaded_file")
+            
+            # 3. Apply additional metadata
+            await handle_update_item(
+                client, target_item_id, name=name, locationId=locationId, 
+                description=description, labelIds=labelIds, notes=notes
+            )
+            result["actions"].append("updated_metadata")
+            
+            # 4. Cleanup local file
+            try:
+                os.remove(full_path)
+                result["actions"].append("deleted_local_file")
+            except Exception as e:
+                result["warnings"] = [f"Failed to delete local file: {str(e)}"]
+                
+        else:
+            # Standard API item move/update
+            await handle_update_item(
+                client, id, name=name, locationId=locationId, 
+                description=description, labelIds=labelIds, notes=notes
+            )
+            result["actions"].append("updated_and_moved")
+            
+        return json.dumps(result, indent=2)
+
+    except Exception as e:
+        return json.dumps({
+            "status": "error",
+            "error": str(e),
+            "hint": "Ensure all UUIDs (locationId, labelIds) are valid and exist in the system."
+        }, indent=2)
 
 async def handle_list_items(
     client: HomeboxClient,
@@ -502,12 +526,13 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         description: str = None,
         labelIds: list[str] = None,
         notes: str = None,
-        source: str = "homebox"
+        source: Literal["homebox", "local"] = "homebox"
     ) -> str:
         """
         Finalizes an item by updating metadata and moving it to a new location.
         If source is 'local', it handles the initial upload to Homebox.
         Ensures the item is removed from the Inbox.
+        Returns a JSON object with the result status and actions taken.
         """
         return await handle_finalize_processed_item(client, id, name, locationId, description, labelIds, notes, source)
 

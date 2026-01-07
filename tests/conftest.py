@@ -16,13 +16,14 @@ async def server_session():
     """Fixture to start the Homebox MCP server and provide a session."""
     env = os.environ.copy()
     env["PYTHONPATH"] = os.path.join(os.getcwd(), "src")
+    env["MCP_TRANSPORT"] = "stdio"
     
     if not env.get("HOMEBOX_API_KEY") and not env.get("HOMEBOX_USERNAME"):
         pytest.skip("No Homebox credentials found in environment")
 
     server_params = StdioServerParameters(
         command=".venv/bin/python",
-        args=["-m", "homebox_mcp.server"],
+        args=["-m", "homebox_mcp.server", "stdio"],
         env=env
     )
 
@@ -56,3 +57,9 @@ def local_http_server():
     
     server.shutdown()
     server.server_close()
+
+def pytest_collection_modifyitems(items):
+    """Automatically mark all async tests as anyio tests."""
+    for item in items:
+        if asyncio.iscoroutinefunction(item.obj):
+            item.add_marker(pytest.mark.anyio)

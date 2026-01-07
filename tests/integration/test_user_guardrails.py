@@ -11,6 +11,7 @@ def random_string(length=8):
 async def run_scenario_session(env_vars):
     env = os.environ.copy()
     env["PYTHONPATH"] = os.path.join(os.getcwd(), "src")
+    env["MCP_TRANSPORT"] = "stdio"
     # Enable safety switches for guardrail tests
     env["HOMEBOX_ALLOW_USER_REGISTRATION"] = "true"
     env["HOMEBOX_ALLOW_USER_DELETION"] = "true"
@@ -18,7 +19,7 @@ async def run_scenario_session(env_vars):
 
     server_params = StdioServerParameters(
         command=".venv/bin/python", 
-        args=["-m", "homebox_mcp.server"], 
+        args=["-m", "homebox_mcp.server", "stdio"], 
         env=env
     )
 
@@ -39,7 +40,7 @@ async def test_user_safety_switches_disabled_by_default():
 
     server_params = StdioServerParameters(
         command=".venv/bin/python", 
-        args=["-m", "homebox_mcp.server"], 
+        args=["-m", "homebox_mcp.server", "stdio"], 
         env=env
     )
 

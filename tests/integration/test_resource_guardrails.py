@@ -20,17 +20,17 @@ def get_id(text):
 async def run_scenario_session(env_vars):
     env = os.environ.copy()
     env["PYTHONPATH"] = os.path.join(os.getcwd(), "src")
+    env["MCP_TRANSPORT"] = "stdio"
     # Enable safety switches for test setup/cleanup
     env["HOMEBOX_ALLOW_USER_REGISTRATION"] = "true"
     env["HOMEBOX_ALLOW_USER_DELETION"] = "true"
     env.update(env_vars)
 
     server_params = StdioServerParameters(
-        command=".venv/bin/python", 
-        args=["-m", "homebox_mcp.server"], 
+        command=".venv/bin/python",
+        args=["-m", "homebox_mcp.server", "stdio"],
         env=env
     )
-
     async with stdio_client(server_params) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()

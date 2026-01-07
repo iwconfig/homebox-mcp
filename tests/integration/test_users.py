@@ -12,6 +12,7 @@ def random_string(length=8):
 async def run_user_test_session():
     env = os.environ.copy()
     env["PYTHONPATH"] = os.path.join(os.getcwd(), "src")
+    env["MCP_TRANSPORT"] = "stdio"
     # Enable safety switches for the lifecycle test
     env["HOMEBOX_ALLOW_USER_REGISTRATION"] = "true"
     env["HOMEBOX_ALLOW_USER_DELETION"] = "true"
@@ -21,7 +22,7 @@ async def run_user_test_session():
 
     server_params = StdioServerParameters(
         command=".venv/bin/python",
-        args=["-m", "homebox_mcp.server"],
+        args=["-m", "homebox_mcp.server", "stdio"],
         env=env
     )
 

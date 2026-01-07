@@ -1,12 +1,14 @@
 import pytest
 import sys
+import os
 from unittest.mock import patch
 from homebox_mcp.server import main
 
 def test_server_startup_stdio():
     """Verify main() defaults to stdio."""
-    with (patch.object(sys, 'argv', ["homebox-mcp"]), 
-          patch("homebox_mcp.server.mcp") as mock_mcp, 
+    with (patch.object(sys, 'argv', ["homebox-mcp"]),
+          patch.dict(os.environ, {"MCP_TRANSPORT": "stdio"}),
+          patch("homebox_mcp.server.mcp") as mock_mcp,
           patch("uvicorn.run") as mock_uvicorn):
         
         main()
