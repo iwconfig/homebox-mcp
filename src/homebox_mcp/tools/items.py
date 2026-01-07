@@ -48,7 +48,7 @@ async def handle_get_inbox_queue(client: HomeboxClient) -> str:
     """Returns a unified list of items in the Inbox (from Homebox API and local directory) that require processing."""
     return await get_inbox_items(client)
 
-async def handle_get_inbox_image(client: HomeboxClient, id: str, attachment_id: str = None) -> Any:
+async def handle_get_inbox_image(client: HomeboxClient, id: str, attachment_id: str | None = None) -> Any:
     """Returns the binary image data for an inbox item (local or server)."""
     from mcp.types import ImageContent
     import base64
@@ -178,12 +178,12 @@ async def handle_finalize_processed_item(
 
 async def handle_list_items(
     client: HomeboxClient,
-    q: str = None,
+    q: str | None = None,
     page: int = 1,
     pageSize: int = 50,
-    labels: list[str] = None,
-    locations: list[str] = None,
-    parentIds: list[str] = None
+    labels: list[str] | None = None,
+    locations: list[str] | None = None,
+    parentIds: list[str] | None = None
 ) -> str:
     params = {}
     if q: params["q"] = q
@@ -246,15 +246,15 @@ async def handle_create_item(
     client: HomeboxClient,
     name: str,
     locationId: str,
-    description: str = None,
+    description: str | None = None,
     quantity: int = 1,
-    parentId: str = None,
-    labelIds: list[str] = None,
-    serialNumber: str = None,
-    modelNumber: str = None,
-    manufacturer: str = None,
-    purchasePrice: float = None,
-    notes: str = None
+    parentId: str | None = None,
+    labelIds: list[str] | None = None,
+    serialNumber: str | None = None,
+    modelNumber: str | None = None,
+    manufacturer: str | None = None,
+    purchasePrice: float | None = None,
+    notes: str | None = None
 ) -> str:
     create_payload = {
         "name": name,
@@ -315,18 +315,18 @@ async def handle_create_item(
 async def handle_update_item(
     client: HomeboxClient,
     id: str,
-    name: str = None,
-    description: str = None,
-    quantity: int = None,
-    locationId: str = None,
-    parentId: str = None,
-    labelIds: list[str] = None,
-    serialNumber: str = None,
-    modelNumber: str = None,
-    manufacturer: str = None,
-    purchasePrice: float = None,
-    notes: str = None,
-    fields: list[dict] = None
+    name: str | None = None,
+    description: str | None = None,
+    quantity: int | None = None,
+    locationId: str | None = None,
+    parentId: str | None = None,
+    labelIds: list[str] | None = None,
+    serialNumber: str | None = None,
+    modelNumber: str | None = None,
+    manufacturer: str | None = None,
+    purchasePrice: float | None = None,
+    notes: str | None = None,
+    fields: list[dict] | None = None
 ) -> str:
     existing = await client.request("GET", f"items/{id}")
     update_payload = existing.copy()
@@ -363,9 +363,9 @@ async def handle_update_item(
 async def handle_patch_item(
     client: HomeboxClient,
     id: str, 
-    locationId: str = None, 
-    quantity: int = None, 
-    labelIds: list[str] = None
+    locationId: str | None = None, 
+    quantity: int | None = None, 
+    labelIds: list[str] | None = None
 ) -> str:
     payload = {}
     if locationId: payload["locationId"] = locationId
@@ -464,9 +464,9 @@ async def handle_create_item_maintenance(
     client: HomeboxClient,
     id: str, 
     name: str, 
-    description: str = None, 
-    scheduledDate: str = None, 
-    completedDate: str = None,
+    description: str | None = None, 
+    scheduledDate: str | None = None, 
+    completedDate: str | None = None,
     cost: float = 0
 ) -> str:
     now_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -560,7 +560,7 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         return await handle_get_inbox_queue(client)
 
     @mcp.tool()
-    async def get_inbox_image(id: str, attachment_id: str = None) -> Any:
+    async def get_inbox_image(id: str, attachment_id: str | None = None) -> Any:
         """Retrieve the binary image data for an inbox item (local file or server attachment)."""
         return await handle_get_inbox_image(client, id, attachment_id)
 

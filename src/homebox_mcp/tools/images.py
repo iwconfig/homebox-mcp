@@ -14,44 +14,39 @@ async def handle_crop_image(
     client: HomeboxClient,
     item_id: str,
     attachment_id: str,
-    crop_box: tuple[int, int, int, int] = None
+    crop_box: tuple[int, int, int, int]
 ) -> str:
     """
     Crops an image attachment and replaces the original.
-    crop_box is (left, top, right, bottom).
+    crop_box is (left, top, right, bottom) in normalized 0-1000 coordinates.
     """
-    if not crop_box:
-        return "Error: No crop_box provided."
-        
     try:
         from ..resources.images import fetch_image_as_pil
         # Fetch full resolution image for cropping
         img = await fetch_image_as_pil(client, item_id, attachment_id, scale=False)
+        w, h = img.size
 
-        # Auto-scale normalized coordinates (0-1000)
-        target_box = list(crop_box)
-        if max(img.size) > 1000 and all(0 <= v <= 1000 for v in target_box):
-            w, h = img.size
-            target_box = [
-                int(target_box[0] * w / 1000),
-                int(target_box[1] * h / 1000),
-                int(target_box[2] * w / 1000),
-                int(target_box[3] * h / 1000)
-            ]
+        # Always scale from normalized 0-1000 to actual pixels
+        target_box = (
+            int(crop_box[0] * w / 1000),
+            int(crop_box[1] * h / 1000),
+            int(crop_box[2] * w / 1000),
+            int(crop_box[3] * h / 1000)
+        )
 
         # crop_box is (left, top, right, bottom)
-        cropped_img = img.crop(tuple(target_box))
+        cropped_img = img.crop(target_box)
         
         out_buffer = io.BytesIO()
         # Preserve original format or default to JPEG
         fmt = getattr(img, "format", "JPEG") or "JPEG"
-        cropped_img.save(out_buffer, format=fmt)
+        cropped_img.save(out_buffer, format=fmt, quality=95)
         new_content = out_buffer.getvalue()
         
         file_name = f"cropped_{attachment_id}.{fmt.lower()}"
         mime_type = mimetypes.guess_type(file_name)[0] or "application/octet-stream"
 
-        # 3. Upload as NEW attachment
+        # Upload as NEW attachment
         files = {'file': (file_name, new_content, mime_type)}
         data = {'name': file_name, 'type': 'photo', 'primary': 'true'}
         
@@ -74,27 +69,26 @@ async def handle_rotate_image(
 ) -> str:
     """
     Rotates an image attachment and replaces the original.
-    degrees: Clockwise rotation amount (internally converted to CCW).
+    degrees: Counter-Clockwise (CCW) rotation amount.
     """
     try:
         from ..resources.images import fetch_image_as_pil
         # Fetch full resolution
         img = await fetch_image_as_pil(client, item_id, attachment_id, scale=False)
 
-        # Standardizing: if user says 90, they usually mean CW.
-        # Pillow rotate is CCW. So we negate it.
+        # Standardizing: Positive = Counter-Clockwise (CCW) to match Pillow and prompts.
         # BICUBIC and expand=True for centering and quality
-        rotated_img = img.rotate(-degrees, expand=True, resample=Image.BICUBIC)
+        rotated_img = img.rotate(degrees, expand=True, resample=Image.BICUBIC)
         
         out_buffer = io.BytesIO()
         fmt = getattr(img, "format", "JPEG") or "JPEG"
-        rotated_img.save(out_buffer, format=fmt)
+        rotated_img.save(out_buffer, format=fmt, quality=95)
         new_content = out_buffer.getvalue()
         
         file_name = f"rotated_{attachment_id}.{fmt.lower()}"
         mime_type = mimetypes.guess_type(file_name)[0] or "application/octet-stream"
 
-        # 3. Upload as NEW attachment
+        # Upload as NEW attachment
         files = {'file': (file_name, new_content, mime_type)}
         data = {'name': file_name, 'type': 'photo', 'primary': 'true'}
         
@@ -114,10 +108,11 @@ async def handle_split_item_from_image(
     id: str,
     extracted_objects: list[dict],
     source: Literal["homebox", "local"] = "homebox",
-    attachment_id: str = None
+    attachment_id: str | None = None
 ) -> str:
     """
     Splits an image into multiple new items.
+    extracted_objects should use normalized 0-1000 coordinates for crop_box.
     """
     from .items import handle_create_item, handle_upload_item_attachment, handle_update_item, handle_delete_item, get_id
     from ..resources.images import fetch_image_as_pil
@@ -125,6 +120,7 @@ async def handle_split_item_from_image(
     try:
         # Use full resolution for extraction
         orig_img = await fetch_image_as_pil(client, id, attachment_id, scale=False)
+        w, h = orig_img.size
         
         results = []
         for i, obj in enumerate(extracted_objects):
@@ -135,18 +131,15 @@ async def handle_split_item_from_image(
                     results.append({"status": "error", "error": f"Invalid crop_box for object {i}"})
                     continue
                 
-                # Auto-scale normalized coordinates (0-1000)
-                target_box = list(crop_box)
-                if max(orig_img.size) > 1000 and all(0 <= v <= 1000 for v in target_box):
-                    w, h = orig_img.size
-                    target_box = [
-                        int(target_box[0] * w / 1000),
-                        int(target_box[1] * h / 1000),
-                        int(target_box[2] * w / 1000),
-                        int(target_box[3] * h / 1000)
-                    ]
+                # Always scale normalized coordinates (0-1000) to actual pixels
+                target_box = (
+                    int(crop_box[0] * w / 1000),
+                    int(crop_box[1] * h / 1000),
+                    int(crop_box[2] * w / 1000),
+                    int(crop_box[3] * h / 1000)
+                )
                     
-                cropped = orig_img.crop(tuple(target_box))
+                cropped = orig_img.crop(target_box)
                 
                 # Apply individual rotation if provided
                 # Standard Mathematical Convention: Positive = Counter-Clockwise
@@ -156,7 +149,7 @@ async def handle_split_item_from_image(
                     cropped = cropped.rotate(obj_rotation, expand=True, resample=Image.BICUBIC)
 
                 out_buf = io.BytesIO()
-                cropped.save(out_buf, format="JPEG", quality=90)
+                cropped.save(out_buf, format="JPEG", quality=95)
                 obj_content = out_buf.getvalue()
                 
                 # b. Create Item
@@ -178,7 +171,7 @@ async def handle_split_item_from_image(
                     continue
                 
                 # c. Upload Attachment
-                temp_filename = f"/tmp/split_{item_id}.jpg"
+                temp_filename = f"/root/.gemini/tmp/split_{item_id}.jpg"
                 with open(temp_filename, 'wb') as f:
                     f.write(obj_content)
                     
@@ -195,9 +188,10 @@ async def handle_split_item_from_image(
         if success_count > 0:
             if source == "local":
                 inbox_dir = os.getenv("HOMEBOX_INBOX_DIRECTORY")
-                full_path = os.path.join(inbox_dir, id)
-                if os.path.exists(full_path):
-                    os.remove(full_path)
+                if inbox_dir:
+                    full_path = os.path.join(inbox_dir, id)
+                    if os.path.exists(full_path):
+                        os.remove(full_path)
             elif source == "homebox":
                 await handle_delete_item(client, id)
                 
@@ -221,7 +215,7 @@ def register_image_tools(mcp: FastMCP, client: HomeboxClient):
         """
         Crops an item's image attachment to remove background/clutter.
         Replaces the existing attachment with the cropped version.
-        crop_box: [left, top, right, bottom] in pixels.
+        crop_box: [left, top, right, bottom] in normalized 0-1000 coordinates.
         """
         if len(crop_box) != 4:
             return "Error: crop_box must be a list of 4 integers [left, top, right, bottom]."
@@ -234,8 +228,8 @@ def register_image_tools(mcp: FastMCP, client: HomeboxClient):
         degrees: int
     ) -> str:
         """
-        Rotates an item's image attachment clockwise.
-        degrees: Clockwise rotation amount (e.g. 90, 180, 270).
+        Rotates an item's image attachment counter-clockwise.
+        degrees: Counter-Clockwise (CCW) rotation amount (e.g. 90, 180, 270).
         """
         return await handle_rotate_image(client, item_id, attachment_id, degrees)
 
@@ -244,12 +238,13 @@ def register_image_tools(mcp: FastMCP, client: HomeboxClient):
         id: str,
         extracted_objects: list[dict],
         source: Literal["homebox", "local"] = "homebox",
-        attachment_id: str = None
+        attachment_id: str | None = None
     ) -> str:
         """
         Splits a single inventory item (or local file) into multiple items by providing specific crop boxes for each object.
-        Each object in 'extracted_objects' should have: 'name', 'locationId', 'crop_box' ([left, top, right, bottom]), 
-        and optionally 'rotation' (any degree), 'description', 'labelIds', 'notes'.
+        Each object in 'extracted_objects' should have: 'name', 'locationId', 'crop_box' ([left, top, right, bottom] in normalized 0-1000 coordinates), 
+        and optionally 'rotation' (any degree CCW), 'description', 'labelIds', 'notes'.
         Deletes the source item/file if at least one item is successfully created.
         """
         return await handle_split_item_from_image(client, id, extracted_objects, source, attachment_id)
+

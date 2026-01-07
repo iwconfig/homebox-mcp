@@ -242,25 +242,26 @@ We provide 3 concrete "Input -> Action" mappings to handle edge cases:
 
 ### 3. Strict Type Enforcement (Prompts as APIs)
 *   **Input**: `prompts.py` now accepts strict arguments.
-*   **Output**: Tools like `finalize_processed_item` now use Python `Literal["homebox", "local"]` to restrict valid inputs.
+*   **Output**: Tools like `finalize_processed_item` now use Python 3.13 `T | None` syntax and restricted literals.
 *   **Return Values**: Tools return structured JSON objects (with `status`, `actions`, and `hint`) instead of plain strings, allowing the agent to self-correct if a step fails.
-*   **Object Extraction Workflow**: `finalize_processed_item` now supports **Rotation** and **Extraction** in a single turn.
-    *   `rotation`: Accepts any integer degree (e.g. `15`, `-42`) to fix image orientation. **Positive = Counter-Clockwise (CCW)**.
-    *   `extracted_objects`: Accepts a list of object definitions (metadata + crop boxes) to efficiently process mixed sets. 
-        *   **Per-Object Rotation**: Each cutout can specify its own `rotation` degree applied AFTER cropping.
-        *   **Centering**: PIL engine uses `BICUBIC` resampling and `expand=True` to keep rotated objects centered.
-        *   **Automatic Coordinate Scaling**: Tools scale normalized coordinates (0-1000) to actual pixel resolution.
-    *   **Token Optimization**: Agent-facing photos are scaled to `HOMEBOX_MAX_IMAGE_DIMENSION` (default 1024px) to preserve context window and reduce latency.
+*   **Integrated Workflow**: `finalize_processed_item` now supports **Rotation** and **Splitting** in a single turn.
+    *   **Rotation (Standardized)**: Positive = Counter-Clockwise (CCW). Any image rotation MUST be corrected via the `rotation` parameter to achieve a level result.
+    *   **Coordinates (Standardized)**: ALWAYS use normalized 0-1000 coordinates for `crop_box`. The backend automatically scales these to high-resolution pixel dimensions.
+    *   **Split Children**: Accepts a list of item definitions (metadata + crop boxes) to efficiently process mixed sets. 
+        *   **Per-Child Rotation**: Each child can specify its own `rotation` degree (CCW) applied AFTER cropping.
+        *   **Centering**: PIL engine uses `BICUBIC` resampling and `expand=True` to keep rotated objects centered and high-quality.
     *   The source item is automatically cleaned up upon success.
 
 ### 4. Logic Guardrails
-*   **Visual Chain-of-Thought (VCoT)**: The agent MUST describe the scene, coordinates, and angles before acting.
-*   **Leveling Rule**: Objects must be rotated to be perfectly vertical/horizontal.
-*   **Terminology**: Use **"Object Cutouts"** or **"Extracted Objects"** instead of "children" to avoid confusion with database hierarchy.
+*   **Visual Chain-of-Thought (VCoT)**: The agent MUST describe the scene, normalized coordinates [0-1000], and angles before acting to ensure spatial accuracy.
 *   **Identity Rule**: Never invent a brand for a generic object.
 *   **Location Strategy**:
     *   *Inbox Items*: Move to best guess.
     *   *Existing Items*: Preserve current location.
     *   *Sub-Items*: Inherit parent location.
 *   **Negative Signal**: Explicitly send `None` (null) for missing fields instead of "N/A".
-*   **Mixed Sets**: Use `extracted_objects` to maintain a quantity of 1 for individual items.
+*   **Semantic Upright (The Readability Rule)**: EVERY object cutout MUST be semantically upright and readable.
+    *   **Text Trumps Shape**: If an object is physically vertical but its text is upside down, you MUST rotate it 180 degrees.
+    *   **Readability Check**: Always ask: 'Is the text currently readable left-to-right?' If not, adjust rotation accordingly.
+*   **Orientation Precision**: Identify the 'Semantic Top' based on text/logos and calculate the CCW rotation needed to bring it to 12 o'clock.
+*   **Mixed Sets**: Mixed sets MUST be split using `extracted_objects` to maintain a quantity of 1 for individual items.
