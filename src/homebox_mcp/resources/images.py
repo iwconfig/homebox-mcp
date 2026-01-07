@@ -8,13 +8,19 @@ from ..client import HomeboxClient
 
 logger = logging.getLogger(__name__)
 
-async def fetch_and_anonymize_image_as_pil(client: HomeboxClient, item_id: str, attachment_id: str) -> Image.Image:
+async def fetch_image_as_pil(
+    client: HomeboxClient, 
+    item_id: str, 
+    attachment_id: Optional[str] = None, 
+    scale: bool = True
+) -> Image.Image:
     """
-    Fetches an image, strips metadata, scales it, and returns a PIL Image object.
+    Fetches an image from Local Inbox or API, transposes EXIF, converts to RGB, 
+    and optionally scales it. Returns a clean PIL Image.
     """
     image_data = b""
     
-    # 1. Try Local Inbox first
+    # 1. Try Local Inbox
     inbox_dir = os.getenv("HOMEBOX_INBOX_DIRECTORY")
     if inbox_dir and os.path.exists(inbox_dir):
         full_path = os.path.join(inbox_dir, item_id)
@@ -25,15 +31,15 @@ async def fetch_and_anonymize_image_as_pil(client: HomeboxClient, item_id: str, 
             except Exception as e:
                 logger.error(f"Failed to read local image {item_id}: {e}")
 
-    # 2. Fallback to Homebox API
-    if not image_data:
+    # 2. Fallback to API
+    if not image_data and attachment_id:
         try:
             image_data = await client.request("GET", f"items/{item_id}/attachments/{attachment_id}")
         except Exception as e:
             logger.error(f"Failed to fetch API image {attachment_id}: {e}")
 
     if not image_data:
-        raise ValueError(f"Could not find image for item {item_id} / attachment {attachment_id}")
+        raise ValueError(f"Could not find image data for {item_id}")
 
     with io.BytesIO(image_data) as in_buffer:
         img = Image.open(in_buffer)
@@ -42,31 +48,32 @@ async def fetch_and_anonymize_image_as_pil(client: HomeboxClient, item_id: str, 
         if img.mode in ("RGBA", "P"):
             img = img.convert("RGB")
             
-        # 3. Scaling
-        max_dim = int(os.getenv("HOMEBOX_MAX_IMAGE_DIMENSION", "1024"))
-        if max(img.size) > max_dim:
-            img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+        if scale:
+            max_dim_val = os.getenv("HOMEBOX_MAX_IMAGE_DIMENSION", "1024")
+            if max_dim_val.lower() not in ("off", "-1"):
+                try:
+                    max_dim = int(max_dim_val)
+                    if max(img.size) > max_dim:
+                        img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+                except ValueError:
+                    pass
             
-        # Create clean copy without metadata
+        # Create clean copy to strip metadata
         clean_img = Image.new(img.mode, img.size)
         clean_img.paste(img)
+        # Preserve original format info
+        clean_img.format = img.format
         return clean_img
 
 async def fetch_and_anonymize_image(client: HomeboxClient, item_id: str, attachment_id: str) -> bytes:
     """
-    Returns the bytes of an anonymized and scaled image.
+    Returns bytes for the agent-facing resource (scaled by default).
     """
     try:
-        img = await fetch_and_anonymize_image_as_pil(client, item_id, attachment_id)
+        img = await fetch_image_as_pil(client, item_id, attachment_id, scale=True)
         out_buffer = io.BytesIO()
         img.save(out_buffer, format="JPEG", quality=85)
         return out_buffer.getvalue()
     except Exception as e:
-        logger.error(f"Error processing image {attachment_id}: {e}")
+        logger.error(f"Error providing image to agent: {e}")
         raise RuntimeError(f"Failed to process image: {e}")
-
-def register_image_resource(mcp: FastMCP, client: HomeboxClient):
-    @mcp.resource("homebox://items/{item_id}/attachments/{attachment_id}/image", mime_type="image/jpeg")
-    async def get_item_image(item_id: str, attachment_id: str) -> bytes:
-        """Returns the anonymized (metadata stripped) image data for an attachment."""
-        return await fetch_and_anonymize_image(client, item_id, attachment_id)

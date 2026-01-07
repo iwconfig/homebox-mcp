@@ -24,39 +24,32 @@ async def handle_crop_image(
         return "Error: No crop_box provided."
         
     try:
-        # 1. Download original
-        image_data = await client.request("GET", f"items/{item_id}/attachments/{attachment_id}")
-            
-        if not image_data or not isinstance(image_data, bytes):
-             return f"Error: Could not download image content for cropping (type: {type(image_data)})."
+        from ..resources.images import fetch_image_as_pil
+        # Fetch full resolution image for cropping
+        img = await fetch_image_as_pil(client, item_id, attachment_id, scale=False)
 
-        # 2. Crop
-        with io.BytesIO(image_data) as in_buffer:
-            img = Image.open(in_buffer)
-            img = ImageOps.exif_transpose(img) # Ensure orientation is correct before cropping
-            
-            # Auto-scale normalized coordinates (0-1000)
-            target_box = list(crop_box)
-            if max(img.size) > 1000 and all(0 <= v <= 1000 for v in target_box):
-                w, h = img.size
-                target_box = [
-                    int(target_box[0] * w / 1000),
-                    int(target_box[1] * h / 1000),
-                    int(target_box[2] * w / 1000),
-                    int(target_box[3] * h / 1000)
-                ]
+        # Auto-scale normalized coordinates (0-1000)
+        target_box = list(crop_box)
+        if max(img.size) > 1000 and all(0 <= v <= 1000 for v in target_box):
+            w, h = img.size
+            target_box = [
+                int(target_box[0] * w / 1000),
+                int(target_box[1] * h / 1000),
+                int(target_box[2] * w / 1000),
+                int(target_box[3] * h / 1000)
+            ]
 
-            # crop_box is (left, top, right, bottom)
-            cropped_img = img.crop(tuple(target_box))
-            
-            out_buffer = io.BytesIO()
-            # Preserve format if possible, or default to JPEG
-            fmt = img.format or "JPEG"
-            cropped_img.save(out_buffer, format=fmt)
-            new_content = out_buffer.getvalue()
-            
-            file_name = f"cropped_{attachment_id}.{fmt.lower()}"
-            mime_type = mimetypes.guess_type(file_name)[0] or "application/octet-stream"
+        # crop_box is (left, top, right, bottom)
+        cropped_img = img.crop(tuple(target_box))
+        
+        out_buffer = io.BytesIO()
+        # Preserve original format or default to JPEG
+        fmt = getattr(img, "format", "JPEG") or "JPEG"
+        cropped_img.save(out_buffer, format=fmt)
+        new_content = out_buffer.getvalue()
+        
+        file_name = f"cropped_{attachment_id}.{fmt.lower()}"
+        mime_type = mimetypes.guess_type(file_name)[0] or "application/octet-stream"
 
         # 3. Upload as NEW attachment
         files = {'file': (file_name, new_content, mime_type)}
@@ -81,31 +74,25 @@ async def handle_rotate_image(
 ) -> str:
     """
     Rotates an image attachment and replaces the original.
-    degrees: clock-wise rotation (90, 180, 270).
+    degrees: Clockwise rotation amount (internally converted to CCW).
     """
     try:
-        # 1. Download original
-        image_data = await client.request("GET", f"items/{item_id}/attachments/{attachment_id}")
-            
-        if not image_data or not isinstance(image_data, bytes):
-             return f"Error: Could not download image content for rotation (type: {type(image_data)})."
+        from ..resources.images import fetch_image_as_pil
+        # Fetch full resolution
+        img = await fetch_image_as_pil(client, item_id, attachment_id, scale=False)
 
-        # 2. Rotate
-        with io.BytesIO(image_data) as in_buffer:
-            img = Image.open(in_buffer)
-            img = ImageOps.exif_transpose(img)
-            
-            # Pillow rotate is counter-clockwise by default, but we'll treat it as clockwise for the user.
-            # So 90 -> -90 (or 270 CCW)
-            rotated_img = img.rotate(-degrees, expand=True)
-            
-            out_buffer = io.BytesIO()
-            fmt = img.format or "JPEG"
-            rotated_img.save(out_buffer, format=fmt)
-            new_content = out_buffer.getvalue()
-            
-            file_name = f"rotated_{attachment_id}.{fmt.lower()}"
-            mime_type = mimetypes.guess_type(file_name)[0] or "application/octet-stream"
+        # Standardizing: if user says 90, they usually mean CW.
+        # Pillow rotate is CCW. So we negate it.
+        # BICUBIC and expand=True for centering and quality
+        rotated_img = img.rotate(-degrees, expand=True, resample=Image.BICUBIC)
+        
+        out_buffer = io.BytesIO()
+        fmt = getattr(img, "format", "JPEG") or "JPEG"
+        rotated_img.save(out_buffer, format=fmt)
+        new_content = out_buffer.getvalue()
+        
+        file_name = f"rotated_{attachment_id}.{fmt.lower()}"
+        mime_type = mimetypes.guess_type(file_name)[0] or "application/octet-stream"
 
         # 3. Upload as NEW attachment
         files = {'file': (file_name, new_content, mime_type)}
@@ -131,112 +118,86 @@ async def handle_split_item_from_image(
 ) -> str:
     """
     Splits an image into multiple new items.
-    Each object in 'extracted_objects' should have: name, locationId, crop_box [l,t,r,b], and optionally description, labelIds, notes.
     """
     from .items import handle_create_item, handle_upload_item_attachment, handle_update_item, handle_delete_item, get_id
-    
-    # 1. Fetch source image data
-    image_data = b""
-    full_path = None
-    if source == "local":
-        if os.path.isabs(id):
-            full_path = id
-        else:
-            inbox_dir = os.getenv("HOMEBOX_INBOX_DIRECTORY")
-            if inbox_dir:
-                full_path = os.path.join(inbox_dir, id)
-        
-        if full_path and os.path.exists(full_path):
-            with open(full_path, 'rb') as f:
-                image_data = f.read()
-    else:
-        # Fetch from API
-        if not attachment_id:
-             return json.dumps({"status": "error", "error": "attachment_id is required for source='homebox'"})
-        
-        image_data = await client.request("GET", f"items/{id}/attachments/{attachment_id}")
-
-    if not image_data or not isinstance(image_data, bytes):
-        return json.dumps({"status": "error", "error": f"Could not download source image for splitting (source={source})."})
-
-    results = []
+    from ..resources.images import fetch_image_as_pil
     
     try:
-        with io.BytesIO(image_data) as in_buffer:
-            orig_img = Image.open(in_buffer)
-            orig_img = ImageOps.exif_transpose(orig_img)
-            
-            for i, obj in enumerate(extracted_objects):
-                try:
-                    # a. Crop
-                    crop_box = obj.get("crop_box")
-                    if not crop_box or len(crop_box) != 4:
-                        results.append({"status": "error", "error": f"Invalid crop_box for object {i}"})
-                        continue
+        # Use full resolution for extraction
+        orig_img = await fetch_image_as_pil(client, id, attachment_id, scale=False)
+        
+        results = []
+        for i, obj in enumerate(extracted_objects):
+            try:
+                # a. Crop
+                crop_box = obj.get("crop_box")
+                if not crop_box or len(crop_box) != 4:
+                    results.append({"status": "error", "error": f"Invalid crop_box for object {i}"})
+                    continue
+                
+                # Auto-scale normalized coordinates (0-1000)
+                target_box = list(crop_box)
+                if max(orig_img.size) > 1000 and all(0 <= v <= 1000 for v in target_box):
+                    w, h = orig_img.size
+                    target_box = [
+                        int(target_box[0] * w / 1000),
+                        int(target_box[1] * h / 1000),
+                        int(target_box[2] * w / 1000),
+                        int(target_box[3] * h / 1000)
+                    ]
                     
-                    # Auto-scale normalized coordinates (0-1000)
-                    target_box = list(crop_box)
-                    if max(orig_img.size) > 1000 and all(0 <= v <= 1000 for v in target_box):
-                        w, h = orig_img.size
-                        target_box = [
-                            int(target_box[0] * w / 1000),
-                            int(target_box[1] * h / 1000),
-                            int(target_box[2] * w / 1000),
-                            int(target_box[3] * h / 1000)
-                        ]
-                        
-                    cropped = orig_img.crop(tuple(target_box))
-                    
-                    # Apply individual rotation if provided
-                    # Positive = Clockwise, Negative = Counter-Clockwise
-                    obj_rotation = obj.get("rotation", 0)
-                    if obj_rotation != 0:
-                        # Pillow rotate is CCW, so we negate the CW input
-                        # Using BICUBIC and expand=True for quality and centering
-                        cropped = cropped.rotate(-obj_rotation, expand=True, resample=Image.BICUBIC)
+                cropped = orig_img.crop(tuple(target_box))
+                
+                # Apply individual rotation if provided
+                # Standard Mathematical Convention: Positive = Counter-Clockwise
+                obj_rotation = obj.get("rotation", 0)
+                if obj_rotation != 0:
+                    # Direct Pillow rotate (CCW)
+                    cropped = cropped.rotate(obj_rotation, expand=True, resample=Image.BICUBIC)
 
-                    out_buf = io.BytesIO()
-                    # We'll use JPEG for all split items to ensure compatibility and small size
-                    cropped.save(out_buf, format="JPEG", quality=90)
-                    obj_content = out_buf.getvalue()
+                out_buf = io.BytesIO()
+                cropped.save(out_buf, format="JPEG", quality=90)
+                obj_content = out_buf.getvalue()
+                
+                # b. Create Item
+                create_res = await handle_create_item(
+                    client, 
+                    name=obj["name"], 
+                    locationId=obj["locationId"],
+                    description=obj.get("description"),
+                    labelIds=obj.get("labelIds"),
+                    notes=obj.get("notes"),
+                    manufacturer=obj.get("manufacturer"),
+                    modelNumber=obj.get("modelNumber"),
+                    serialNumber=obj.get("serialNumber")
+                )
+                item_id = get_id(create_res)
+                
+                if not item_id:
+                    results.append({"status": "error", "error": f"Failed to create item for object {i}: {create_res}"})
+                    continue
+                
+                # c. Upload Attachment
+                temp_filename = f"/tmp/split_{item_id}.jpg"
+                with open(temp_filename, 'wb') as f:
+                    f.write(obj_content)
                     
-                    # b. Create Item
-                    create_res = await handle_create_item(
-                        client, 
-                        name=obj["name"], 
-                        locationId=obj["locationId"],
-                        description=obj.get("description"),
-                        labelIds=obj.get("labelIds"),
-                        notes=obj.get("notes"),
-                        manufacturer=obj.get("manufacturer"),
-                        modelNumber=obj.get("modelNumber"),
-                        serialNumber=obj.get("serialNumber")
-                    )
-                    item_id = get_id(create_res)
-                    
-                    if not item_id:
-                        results.append({"status": "error", "error": f"Failed to create item for object {i}: {create_res}"})
-                        continue
-                    
-                    # c. Upload Attachment
-                    # Explicitly use .jpg extension and image/jpeg mime type
-                    temp_filename = f"/tmp/split_{item_id}.jpg"
-                    with open(temp_filename, 'wb') as f:
-                        f.write(obj_content)
-                        
-                    await handle_upload_item_attachment(client, item_id, temp_filename, primary=True, attachment_type="photo")
-                    os.remove(temp_filename)
-                    
-                    results.append({"status": "success", "item_id": item_id, "name": obj["name"]})
-                    
-                except Exception as obj_err:
-                    results.append({"status": "error", "error": str(obj_err)})
+                await handle_upload_item_attachment(client, item_id, temp_filename, primary=True, attachment_type="photo")
+                os.remove(temp_filename)
+                
+                results.append({"status": "success", "item_id": item_id, "name": obj["name"]})
+                
+            except Exception as obj_err:
+                results.append({"status": "error", "error": str(obj_err)})
 
-        # 4. Cleanup source if at least one object was created
+        # 4. Cleanup source if at least one object was extracted
         success_count = sum(1 for r in results if r["status"] == "success")
         if success_count > 0:
-            if source == "local" and full_path:
-                os.remove(full_path)
+            if source == "local":
+                inbox_dir = os.getenv("HOMEBOX_INBOX_DIRECTORY")
+                full_path = os.path.join(inbox_dir, id)
+                if os.path.exists(full_path):
+                    os.remove(full_path)
             elif source == "homebox":
                 await handle_delete_item(client, id)
                 
@@ -247,6 +208,7 @@ async def handle_split_item_from_image(
         }, indent=2)
 
     except Exception as e:
+        logger.error(f"Extraction failed: {e}")
         return json.dumps({"status": "error", "error": str(e)})
 
 def register_image_tools(mcp: FastMCP, client: HomeboxClient):

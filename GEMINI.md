@@ -245,7 +245,7 @@ We provide 3 concrete "Input -> Action" mappings to handle edge cases:
 *   **Output**: Tools like `finalize_processed_item` now use Python `Literal["homebox", "local"]` to restrict valid inputs.
 *   **Return Values**: Tools return structured JSON objects (with `status`, `actions`, and `hint`) instead of plain strings, allowing the agent to self-correct if a step fails.
 *   **Object Extraction Workflow**: `finalize_processed_item` now supports **Rotation** and **Extraction** in a single turn.
-    *   `rotation`: Accepts any integer degree (e.g. `15`, `-42`) to fix image orientation. **Positive = Clockwise**.
+    *   `rotation`: Accepts any integer degree (e.g. `15`, `-42`) to fix image orientation. **Positive = Counter-Clockwise (CCW)**.
     *   `extracted_objects`: Accepts a list of object definitions (metadata + crop boxes) to efficiently process mixed sets. 
         *   **Per-Object Rotation**: Each cutout can specify its own `rotation` degree applied AFTER cropping.
         *   **Centering**: PIL engine uses `BICUBIC` resampling and `expand=True` to keep rotated objects centered.
