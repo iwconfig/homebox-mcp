@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 async def fetch_image_as_pil(
     client: HomeboxClient, 
     item_id: str, 
-    attachment_id: Optional[str] = None, 
+    attachment_id: str | None = None, 
     scale: bool = True
 ) -> Image.Image:
     """
@@ -23,6 +23,7 @@ async def fetch_image_as_pil(
     # 1. Try Local Inbox
     inbox_dir = os.getenv("HOMEBOX_INBOX_DIRECTORY")
     if inbox_dir and os.path.exists(inbox_dir):
+        # Local files use the item_id as the filename
         full_path = os.path.join(inbox_dir, item_id)
         if os.path.exists(full_path) and os.path.isfile(full_path):
             try:
@@ -77,3 +78,9 @@ async def fetch_and_anonymize_image(client: HomeboxClient, item_id: str, attachm
     except Exception as e:
         logger.error(f"Error providing image to agent: {e}")
         raise RuntimeError(f"Failed to process image: {e}")
+
+def register_image_resource(mcp: FastMCP, client: HomeboxClient):
+    @mcp.resource("homebox://items/{item_id}/attachments/{attachment_id}/image")
+    async def get_item_image(item_id: str, attachment_id: str) -> bytes:
+        """Get an item attachment image (anonymized)."""
+        return await fetch_and_anonymize_image(client, item_id, attachment_id)

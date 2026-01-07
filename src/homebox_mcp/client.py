@@ -3,7 +3,7 @@ import httpx
 import logging
 import json
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Any, Dict
+from typing import Any, Dict
 from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
@@ -19,8 +19,8 @@ class HomeboxClient:
         self.username = os.getenv("HOMEBOX_USERNAME")
         self.password = os.getenv("HOMEBOX_PASSWORD")
         
-        self.token: Optional[str] = self.api_key
-        self.token_expiry: Optional[datetime] = None
+        self.token: str | None = self.api_key
+        self.token_expiry: datetime | None = None
         
         self._load_env_credentials()
 

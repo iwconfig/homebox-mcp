@@ -5,7 +5,7 @@ import httpx
 import base64
 import re
 import io
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 from datetime import datetime, timezone
 from ..client import HomeboxClient
 from ..guardrails import protect_resource
@@ -63,15 +63,15 @@ async def handle_finalize_processed_item(
     id: str,
     name: str,
     locationId: str,
-    description: Optional[str] = None,
-    labelIds: Optional[list[str]] = None,
-    notes: Optional[str] = None,
+    description: str | None = None,
+    labelIds: list[str] | None = None,
+    notes: str | None = None,
     source: Literal["homebox", "local"] = "homebox",
-    rotation: Optional[int] = None,
-    extracted_objects: Optional[list[dict]] = None,
-    manufacturer: Optional[str] = None,
-    modelNumber: Optional[str] = None,
-    serialNumber: Optional[str] = None
+    rotation: int | None = None,
+    extracted_objects: list[dict] | None = None,
+    manufacturer: str | None = None,
+    modelNumber: str | None = None,
+    serialNumber: str | None = None
 ) -> str:
     """
     Finalizes an item by updating metadata and moving it to a new location.
@@ -569,15 +569,15 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         id: str,
         name: str,
         locationId: str,
-        description: Optional[str] = None,
-        labelIds: Optional[list[str]] = None,
-        notes: Optional[str] = None,
+        description: str | None = None,
+        labelIds: list[str] | None = None,
+        notes: str | None = None,
         source: Literal["homebox", "local"] = "homebox",
-        rotation: Optional[int] = None,
-        extracted_objects: Optional[list[dict]] = None,
-        manufacturer: Optional[str] = None,
-        modelNumber: Optional[str] = None,
-        serialNumber: Optional[str] = None
+        rotation: int | None = None,
+        extracted_objects: list[dict] | None = None,
+        manufacturer: str | None = None,
+        modelNumber: str | None = None,
+        serialNumber: str | None = None
     ) -> str:
         """
         Finalizes an item by updating metadata and moving it to a new location.
@@ -617,15 +617,15 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
     async def create_item(
         name: str,
         locationId: str,
-        description: Optional[str] = None,
+        description: str | None = None,
         quantity: int = 1,
-        parentId: Optional[str] = None,
-        labelIds: Optional[list[str]] = None,
-        serialNumber: Optional[str] = None,
-        modelNumber: Optional[str] = None,
-        manufacturer: Optional[str] = None,
-        purchasePrice: Optional[float] = None,
-        notes: Optional[str] = None
+        parentId: str | None = None,
+        labelIds: list[str] | None = None,
+        serialNumber: str | None = None,
+        modelNumber: str | None = None,
+        manufacturer: str | None = None,
+        purchasePrice: float | None = None,
+        notes: str | None = None
     ) -> str:
         """Create a new item. Handles complex fields via a two-step create-and-update process. locationId is required."""
         return await handle_create_item(client, name, locationId, description, quantity, parentId, labelIds, serialNumber, modelNumber, manufacturer, purchasePrice, notes)
@@ -633,18 +633,18 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
     @mcp.tool()
     async def update_item(
         id: str,
-        name: Optional[str] = None,
-        description: Optional[str] = None,
-        quantity: Optional[int] = None,
-        locationId: Optional[str] = None,
-        parentId: Optional[str] = None,
-        labelIds: Optional[list[str]] = None,
-        serialNumber: Optional[str] = None,
-        modelNumber: Optional[str] = None,
-        manufacturer: Optional[str] = None,
-        purchasePrice: Optional[float] = None,
-        notes: Optional[str] = None,
-        fields: Optional[list[dict]] = None
+        name: str | None = None,
+        description: str | None = None,
+        quantity: int | None = None,
+        locationId: str | None = None,
+        parentId: str | None = None,
+        labelIds: list[str] | None = None,
+        serialNumber: str | None = None,
+        modelNumber: str | None = None,
+        manufacturer: str | None = None,
+        purchasePrice: float | None = None,
+        notes: str | None = None,
+        fields: list[dict] | None = None
     ) -> str:
         """Update an existing item (replaces existing with merged data)"""
         return await handle_update_item(client, id, name, description, quantity, locationId, parentId, labelIds, serialNumber, modelNumber, manufacturer, purchasePrice, notes, fields)
