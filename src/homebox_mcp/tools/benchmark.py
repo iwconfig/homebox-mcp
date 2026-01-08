@@ -13,15 +13,7 @@ async def handle_benchmark_vision(
 ) -> str:
     """
     Runs the vision optimization benchmark using a specific prompt version.
-    
-    Args:
-        prompt_version: The filename of the prompt template to use (default: analyze-item.md).
-                        Must be located in src/homebox_mcp/prompts/templates/ or src/homebox_mcp/prompts/versions/.
-        item_ids: Optional list of item IDs (from Homebox) to test against. 
-                  If provided, these items act as the "Test Set".
-                  If not provided, we should ideally look for local test images (future implementation).
     """
-    
     # 1. Resolve Prompt Path
     base_dir = os.path.dirname(os.path.dirname(__file__)) # src/homebox_mcp
     template_dir = os.path.join(base_dir, "prompts", "templates")
@@ -39,30 +31,53 @@ async def handle_benchmark_vision(
     except Exception as e:
         return f"Error reading prompt file: {e}"
 
-    # 2. Prepare the Benchmark Context
-    # Since we can't fully "simulate" the agent loop programmatically without complex recursion,
-    # this tool acts as a "Prompt Injector" for the USER (you, the Agent).
-    # It returns the prompt text + the instructions for YOU to execute the test.
-    
-    output = f"## 🧪 Vision Benchmark: {prompt_version}\n\n"
-    output += "I have loaded the prompt version. Please execute the following logic manually for the Test Set:\n\n"
-    
-    output += "### 1. The Prompt Logic\n"
-    output += "```markdown\n"
-    output += prompt_content[:500] + "\n... (truncated) ...\n"
-    output += "```\n\n"
+    output = f"# 🧪 Vision Benchmark: {prompt_version}\n\n"
+    output += "## 1. Active Logic\n"
+    output += f"```markdown\n{prompt_content}\n```\n\n"
     
     if item_ids:
-        output += "### 2. The Test Set (Live Items)\n"
-        output += "Please run `get_item` and `get_inbox_image` for these IDs, then Apply the Logic above:\n"
-        for i, uid in enumerate(item_ids):
-            output += f"{i+1}. `{uid}`\n"
-            
+        output += "## 2. Test Set Evaluation\n"
+        output += "I will now summarize the items for you. Please APPLY the logic above to these items.\n\n"
+        for uid in item_ids:
+            try:
+                item = await client.request("GET", f"items/{uid}")
+                output += f"### Item: {item.get('name')} (`{uid}`)\n"
+                atts = item.get("attachments", [])
+                if atts:
+                    output += f"- Has {len(atts)} attachments. Use `get_inbox_image(id='{uid}')` to see the photo.\n"
+                else:
+                    output += "- ⚠️ No attachments found.\n"
+            except Exception as e:
+                output += f"### Item: `{uid}` (Error: {e})\n"
+            output += "\n"
     else:
-        output += "### 2. The Test Set (No Items Provided)\n"
-        output += "Please identify items to test, or upload test images to the Inbox.\n"
+        output += "## 2. Test Set\nNo items provided. Please identify a failed item to use as a test case.\n"
+
+    output += "\n---\n"
+    output += "### 🛠️ Optimization Loop Instructions\n"
+    output += "1. Inspect the image(s) using the logic above.\n"
+    output += "2. Identify any rotation or crop errors.\n"
+    output += "3. If errors found, create a new version using `save_prompt_version`.\n"
+    output += "4. Re-run this benchmark with the new version.\n"
 
     return output
+
+async def handle_save_prompt_version(version_name: str, content: str) -> str:
+    """Saves a new prompt version to src/homebox_mcp/prompts/versions/."""
+    base_dir = os.path.dirname(os.path.dirname(__file__))
+    versions_dir = os.path.join(base_dir, "prompts", "versions")
+    os.makedirs(versions_dir, exist_ok=True)
+    
+    file_path = os.path.join(versions_dir, version_name)
+    if not file_path.endswith(".md"):
+        file_path += ".md"
+        
+    try:
+        with open(file_path, "w") as f:
+            f.write(content)
+        return f"Successfully saved prompt version to {os.path.basename(file_path)}"
+    except Exception as e:
+        return f"Error saving prompt version: {e}"
 
 def register_benchmark_tools(mcp: FastMCP, client: HomeboxClient):
     @mcp.tool()
@@ -75,3 +90,11 @@ def register_benchmark_tools(mcp: FastMCP, client: HomeboxClient):
         Useful for A/B testing prompt iterations.
         """
         return await handle_benchmark_vision(client, prompt_version, item_ids)
+
+    @mcp.tool()
+    async def save_prompt_version(version_name: str, content: str) -> str:
+        """
+        Saves a new version of the analyze-item prompt for benchmarking.
+        The filename will be forced to end in .md.
+        """
+        return await handle_save_prompt_version(version_name, content)

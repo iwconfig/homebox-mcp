@@ -33,11 +33,20 @@ async def fetch_image_as_pil(
                 logger.error(f"Failed to read local image {item_id}: {e}")
 
     # 2. Fallback to API
-    if not image_data and attachment_id:
+    if not image_data:
         try:
-            image_data = await client.request("GET", f"items/{item_id}/attachments/{attachment_id}")
+            target_att_id = attachment_id
+            if not target_att_id:
+                # Auto-resolve primary attachment if ID is missing
+                item_data = await client.request("GET", f"items/{item_id}")
+                attachments = item_data.get("attachments", [])
+                if not attachments:
+                    raise ValueError(f"Item {item_id} has no attachments.")
+                target_att_id = next((a["id"] for a in attachments if a.get("primary")), attachments[0]["id"])
+            
+            image_data = await client.request("GET", f"items/{item_id}/attachments/{target_att_id}")
         except Exception as e:
-            logger.error(f"Failed to fetch API image {attachment_id}: {e}")
+            logger.error(f"Failed to fetch API image for item {item_id}: {e}")
 
     if not image_data:
         raise ValueError(f"Could not find image data for {item_id}")
