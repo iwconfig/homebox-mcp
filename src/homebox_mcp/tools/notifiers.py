@@ -5,33 +5,50 @@ from fastmcp import FastMCP, Context
 # --- Tool Handlers ---
 
 async def handle_list_notifiers(client: HomeboxClient) -> str:
+    """Get all configured notifiers."""
     data = await client.request("GET", "notifiers")
     return json.dumps(data, indent=2)
 
 async def handle_create_notifier(client: HomeboxClient, name: str, url: str, isActive: bool = True) -> str:
-    payload = {"name": name, "url": url, "isActive": isActive}
+    """Create a new notification channel (e.g. Discord, Slack, Gotify)."""
+    payload = {
+        "name": name,
+        "url": url,
+        "isActive": isActive
+    }
     data = await client.request("POST", "notifiers", json=payload)
     return f"Created Notifier: {json.dumps(data, indent=2)}"
 
 async def handle_test_notifier(client: HomeboxClient, url: str) -> str:
+    """Test a notifier URL by sending a sample event."""
     try:
+        # Note: 'url' field in JSON body is required by backend for validation
         await client.request("POST", "notifiers/test", json={"url": url})
         return "Notifier test signal sent successfully"
     except Exception as e:
         return f"Error testing notifier: {str(e)}"
 
 async def handle_update_notifier(client: HomeboxClient, id: str, name: str | None = None, url: str | None = None, isActive: bool | None = None) -> str:
+    """Update an existing notifier's configuration."""
     existing_list = await client.request("GET", "notifiers")
     notifier = next((n for n in existing_list if n["id"] == id), None)
-    if not notifier: return f"Notifier {id} not found"
+    
+    if not notifier:
+        return f"Notifier {id} not found"
+        
     payload = notifier.copy()
-    if name: payload["name"] = name
-    if url: payload["url"] = url
-    if isActive is not None: payload["isActive"] = isActive
+    if name:
+        payload["name"] = name
+    if url:
+        payload["url"] = url
+    if isActive is not None:
+        payload["isActive"] = isActive
+        
     data = await client.request("PUT", f"notifiers/{id}", json=payload)
     return f"Updated Notifier: {json.dumps(data, indent=2)}"
 
 async def handle_delete_notifier(client: HomeboxClient, id: str) -> str:
+    """Delete a notifier by ID."""
     await client.request("DELETE", f"notifiers/{id}")
     return "Deleted Notifier"
 
@@ -42,18 +59,22 @@ def register_notifiers_tools(mcp: FastMCP, client: HomeboxClient):
     async def list_notifiers() -> str:
         """Get Notifiers"""
         return await handle_list_notifiers(client)
+
     @mcp.tool()
     async def create_notifier(name: str, url: str, isActive: bool = True) -> str:
         """Create Notifier"""
         return await handle_create_notifier(client, name, url, isActive)
+
     @mcp.tool()
     async def test_notifier(url: str) -> str:
         """Test Notifier"""
         return await handle_test_notifier(client, url)
+
     @mcp.tool()
     async def update_notifier(id: str, name: str | None = None, url: str | None = None, isActive: bool | None = None) -> str:
         """Update Notifier"""
         return await handle_update_notifier(client, id, name, url, isActive)
+
     @mcp.tool()
     async def delete_notifier(id: str) -> str:
         """Delete a Notifier"""
