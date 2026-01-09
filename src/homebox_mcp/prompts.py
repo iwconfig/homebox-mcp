@@ -1,8 +1,9 @@
 from fastmcp import FastMCP
 
+
 def register_all_prompts(mcp: FastMCP):
     """Register all prompts with the FastMCP server."""
-    
+
     @mcp.prompt(name="analyze-item")
     def analyze_item() -> str:
         """
@@ -11,7 +12,8 @@ def register_all_prompts(mcp: FastMCP):
         """
         return """
 # CONTEXT
-You are an expert Inventory Assistant for Homebox. Your goal is to process items in the "Inbox", identify them accurately, suggest enrichment metadata, and move them to appropriate locations.
+You are an expert Inventory Assistant for Homebox. Your goal is to process items in the "Inbox",
+identify them accurately, suggest enrichment metadata, and move them to appropriate locations.
 
 # OBJECTIVE
 1. Analyze the provided image(s).
@@ -37,18 +39,21 @@ The Homebox MCP Server (expecting structured data).
    - Existing Items: Preserve current location unless requested otherwise.
    - Sub-Items: Inherit parent location.
 3. **Negative Signal**: Explicitly use `null` (None) for missing fields instead of "N/A" or "Unknown".
-4. **Semantic Upright (Readability Rule)**: EVERY object cutout MUST be semantically upright and readable. 
+4. **Semantic Upright (Readability Rule)**: EVERY object cutout MUST be semantically upright and readable.
    - Text Trumps Shape: If text is upside down, rotate 180 degrees even if the object is physically vertical.
    - Readability Check: Ask 'Is the text currently readable left-to-right?'.
-5. **Orientation Precision**: Identify the 'Semantic Top' based on text/logos and calculate the CCW rotation needed to bring it to 12 o'clock.
-6. **Mixed Sets**: Mixed sets MUST be split using `extracted_objects` to maintain a quantity of 1 for individual items.
-7. **Visual Chain-of-Thought (VCoT)**: ALWAYS describe the scene, normalized coordinates [0-1000], and angles before acting.
+5. **Orientation Precision**: Identify the 'Semantic Top' based on text/logos and calculate the CCW rotation
+   needed to bring it to 12 o'clock.
+6. **Mixed Sets**: Mixed sets MUST be split using `extracted_objects` to maintain a quantity of 1
+   for individual items.
+7. **Visual Chain-of-Thought (VCoT)**: ALWAYS describe the scene, normalized coordinates [0-1000],
+   and angles before acting.
 
 # GOLDEN EXAMPLES
 
 ## Example 1: The Branded Product
 **Input**: Image of a blue Makita Drill.
-**Analysis**: Makita brand visible. Model XDT13. 
+**Analysis**: Makita brand visible. Model XDT13.
 **Suggestion**:
 - Name: Makita XDT13 18V LXT Brushless Impact Driver
 - Manufacturer: Makita

@@ -1,81 +1,101 @@
-import json
-from ..client import HomeboxClient
+from typing import Annotated
+
 from fastmcp import FastMCP
+
+from ..client import HomeboxClient
 
 # --- Tool Handlers ---
 
-async def handle_list_notifiers(client: HomeboxClient) -> str:
+async def handle_list_notifiers(client: HomeboxClient) -> list[dict]:
     """Get all configured notifiers."""
-    data = await client.request("GET", "notifiers")
-    return json.dumps(data, indent=2)
+    return await client.request("GET", "notifiers")
 
-async def handle_create_notifier(client: HomeboxClient, name: str, url: str, isActive: bool = True) -> str:
+async def handle_create_notifier(client: HomeboxClient, name: str, url: str, is_active: bool = True) -> dict:
     """Create a new notification channel (e.g. Discord, Slack, Gotify)."""
     payload = {
         "name": name,
         "url": url,
-        "isActive": isActive
+        "isActive": is_active
     }
-    data = await client.request("POST", "notifiers", json=payload)
-    return f"Created Notifier: {json.dumps(data, indent=2)}"
+    return await client.request("POST", "notifiers", json=payload)
 
 async def handle_test_notifier(client: HomeboxClient, url: str) -> str:
     """Test a notifier URL by sending a sample event."""
     try:
-        # Note: 'url' field in JSON body is required by backend for validation
         await client.request("POST", "notifiers/test", json={"url": url})
         return "Notifier test signal sent successfully"
     except Exception as e:
         return f"Error testing notifier: {str(e)}"
 
-async def handle_update_notifier(client: HomeboxClient, id: str, name: str | None = None, url: str | None = None, isActive: bool | None = None) -> str:
+async def handle_update_notifier(
+    client: HomeboxClient,
+    id: str,
+    name: str | None = None,
+    url: str | None = None,
+    is_active: bool | None = None
+) -> dict:
     """Update an existing notifier's configuration."""
     existing_list = await client.request("GET", "notifiers")
     notifier = next((n for n in existing_list if n["id"] == id), None)
-    
+
     if not notifier:
-        return f"Notifier {id} not found"
-        
+        raise ValueError(f"Notifier {id} not found")
+
     payload = notifier.copy()
     if name:
         payload["name"] = name
     if url:
         payload["url"] = url
-    if isActive is not None:
-        payload["isActive"] = isActive
-        
-    data = await client.request("PUT", f"notifiers/{id}", json=payload)
-    return f"Updated Notifier: {json.dumps(data, indent=2)}"
+    if is_active is not None:
+        payload["isActive"] = is_active
+
+    return await client.request("PUT", f"notifiers/{id}", json=payload)
 
 async def handle_delete_notifier(client: HomeboxClient, id: str) -> str:
     """Delete a notifier by ID."""
     await client.request("DELETE", f"notifiers/{id}")
-    return "Deleted Notifier"
+    return f"Deleted Notifier {id}"
 
 # --- Registration ---
 
 def register_notifiers_tools(mcp: FastMCP, client: HomeboxClient):
-    @mcp.tool()
-    async def list_notifiers() -> str:
+    @mcp.tool(output_schema={"type": "object"})
+    async def list_notifiers() -> dict:
         """Get Notifiers"""
-        return await handle_list_notifiers(client)
+        res = await handle_list_notifiers(client)
+        return {"notifiers": res}
 
-    @mcp.tool()
-    async def create_notifier(name: str, url: str, isActive: bool = True) -> str:
+    @mcp.tool(output_schema={"type": "object"})
+    async def create_notifier(
+        name: Annotated[str, "Name of the notifier"],
+        url: Annotated[str, "URL of the notifier"],
+        is_active: Annotated[bool, "Whether the notifier is enabled"] = True
+    ) -> dict:
         """Create Notifier"""
-        return await handle_create_notifier(client, name, url, isActive)
+        return await handle_create_notifier(client, name=name, url=url, is_active=is_active)
 
     @mcp.tool()
-    async def test_notifier(url: str) -> str:
+    async def test_notifier(
+        url: Annotated[str, "URL to test"]
+    ) -> str:
         """Test Notifier"""
-        return await handle_test_notifier(client, url)
+        return await handle_test_notifier(client, url=url)
 
-    @mcp.tool()
-    async def update_notifier(id: str, name: str | None = None, url: str | None = None, isActive: bool | None = None) -> str:
+    @mcp.tool(output_schema={"type": "object"})
+    async def update_notifier(
+        id: Annotated[str, "ID of the notifier"],
+        name: Annotated[str | None, "New name of the notifier"] = None,
+        url: Annotated[str | None, "New URL of the notifier"] = None,
+        is_active: Annotated[bool | None, "Whether the notifier is enabled"] = None
+    ) -> dict:
         """Update Notifier"""
-        return await handle_update_notifier(client, id, name, url, isActive)
+        return await handle_update_notifier(
+            client, id=id, name=name, url=url, is_active=is_active
+        )
 
     @mcp.tool()
-    async def delete_notifier(id: str) -> str:
+    async def delete_notifier(
+        id: Annotated[str, "ID of the notifier"]
+    ) -> str:
         """Delete a Notifier"""
-        return await handle_delete_notifier(client, id)
+        return await handle_delete_notifier(client, id=id)

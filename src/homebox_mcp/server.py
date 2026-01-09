@@ -1,12 +1,14 @@
 import logging
 import os
 import sys
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
+
 from fastmcp import FastMCP
+
 from .client import HomeboxClient
-from .tools import register_all_tools
 from .prompts import register_all_prompts
+from .tools import register_all_tools
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -49,14 +51,14 @@ def main():
     transport = os.getenv("MCP_TRANSPORT", "stdio").lower()
     host = os.getenv("MCP_HOST", "0.0.0.0")
     port = int(os.getenv("MCP_PORT", "8000"))
-    
+
     # Allow CLI overrides
     if len(sys.argv) > 1:
         if "sse" in sys.argv:
             transport = "sse"
         elif "stdio" in sys.argv:
             transport = "stdio"
-            
+
     if transport == "sse":
         logger.info(f"Starting Homebox MCP server over SSE on {host}:{port}")
         logger.info(f"Endpoint: http://{host}:{port}/sse")

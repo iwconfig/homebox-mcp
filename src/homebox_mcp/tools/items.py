@@ -1,17 +1,16 @@
-import json
-import os
-import mimetypes
-import httpx
 import base64
+import mimetypes
+import os
 from datetime import datetime, timezone
-from typing import Annotated
-from pydantic import Field
+from typing import Annotated, Literal
+
+import anyio
+import httpx
+from fastmcp import Context, FastMCP
+from fastmcp.utilities.types import Image
+
 from ..client import HomeboxClient
 from ..guardrails import protect_resource
-from fastmcp import FastMCP, Context
-from fastmcp.utilities.types import Image
-from fastmcp.tools import Tool
-from fastmcp.tools.tool_transform import ArgTransform
 
 # --- Tool Handlers ---
 
@@ -21,150 +20,175 @@ async def handle_get_item_image(client: HomeboxClient, id: str) -> Image:
     attachments = item.get("attachments", [])
     if not attachments:
         raise ValueError(f"No attachments found for item {id}")
+
+    # Use primary attachment or fall back to the first one available
     primary = next((a for a in attachments if a.get("primary")), attachments[0])
     data = await client.request("GET", f"items/{id}/attachments/{primary['id']}", return_bytes=True)
+
     return Image(data=data, format="png")
 
 async def handle_list_items(
     client: HomeboxClient,
     q: str | None = None,
     page: int = 1,
-    pageSize: int = 50,
+    page_size: int = 50,
     labels: list[str] | None = None,
     locations: list[str] | None = None,
-    parentIds: list[str] | None = None,
-    negateLabels: bool = False,
-    onlyWithoutPhoto: bool = False,
-    onlyWithPhoto: bool = False,
-    includeArchived: bool = False,
-    orderBy: str | None = None
-) -> str:
+    parent_ids: list[str] | None = None,
+    negate_labels: bool = False,
+    only_without_photo: bool = False,
+    only_with_photo: bool = False,
+    include_archived: bool = False,
+    order_by: str | None = None
+) -> dict:
+    """Query All Items."""
     params = {}
     if q:
         params["q"] = q
     if page:
         params["page"] = page
-    if pageSize:
-        params["pageSize"] = pageSize
+    if page_size:
+        params["pageSize"] = page_size
     if labels:
         params["labels"] = labels
     if locations:
         params["locations"] = locations
-    if parentIds:
-        params["parentIds"] = parentIds
-    params.update({
-        "negateLabels": str(negateLabels).lower(),
-        "onlyWithoutPhoto": str(onlyWithoutPhoto).lower(),
-        "onlyWithPhoto": str(onlyWithPhoto).lower(),
-        "includeArchived": str(includeArchived).lower()
-    })
-    if orderBy:
-        params["orderBy"] = orderBy
-    data = await client.request("GET", "items", params=params)
-    items = data.get("items", [])
-    output = f"Found {data.get('total', len(items))} items (Page {data.get('page', 1)}/{data.get('totalPages', '?')})\n\n"
-    for item in items:
-        link = client.get_web_url("item", item["id"])
-        output += f"- [{item.get('name')}]({link}) (ID: {item.get('id')})\n"
-        if loc := item.get("location"):
-            output += f"  Location: {loc.get('name')}\n"
-        if qty := item.get("quantity"):
-            output += f"  Qty: {qty}\n"
-    return output
+    if parent_ids:
+        params["parentIds"] = parent_ids
 
-async def handle_get_item(client: HomeboxClient, id: str) -> str:
-    data = await client.request("GET", f"items/{id}")
-    link = client.get_web_url("item", data["id"])
-    return f"Item: {data.get('name')}\nLink: {link}\n\n{json.dumps(data, indent=2)}"
+    # Map boolean flags to the lowercase strings expected by the backend
+    params.update({
+        "negateLabels": str(negate_labels).lower(),
+        "onlyWithoutPhoto": str(only_without_photo).lower(),
+        "onlyWithPhoto": str(only_with_photo).lower(),
+        "includeArchived": str(include_archived).lower()
+    })
+
+    if order_by:
+        params["orderBy"] = order_by
+
+    return await client.request("GET", "items", params=params)
+
+async def handle_get_item(client: HomeboxClient, id: str) -> dict:
+    """Get full details for a specific item by ID."""
+    return await client.request("GET", f"items/{id}")
 
 async def handle_get_item_link(client: HomeboxClient, query: str) -> str:
+    """Searches for an item by name, asset ID, or description and returns its web link."""
     search_query = query
+    # Automatically prefix with # if searching for a pure numeric asset ID
     if query.isdigit() or (("-" in query) and query.replace("-", "").isdigit()):
         if not query.startswith("#"):
             search_query = f"#{query}"
+
     data = await client.request("GET", "items", params={"q": search_query, "pageSize": 5})
     items = data.get("items", [])
+
     if not items and search_query != query:
+        # Retry with original query if asset-search failed
         data = await client.request("GET", "items", params={"q": query, "pageSize": 5})
         items = data.get("items", [])
+
     if not items:
         return f"No items found matching '{query}'"
+
     if len(items) == 1:
         item = items[0]
         link = client.get_web_url("item", item["id"])
         return f"✅ Found: {item['name']}\n🔗 Link: {link}"
+
     output = f"Found {len(items)} matches for '{query}':\n\n"
     for item in items:
         link = client.get_web_url("item", item["id"])
         output += f"- {item['name']} (Asset: {item.get('assetId', 'N/A')})\n  🔗 {link}\n"
+
     return output
 
 @protect_resource(resource_type="items", action="create")
 async def handle_create_item(
     client: HomeboxClient,
     name: str,
-    locationId: str,
+    location_id: str,
     description: str | None = None,
     quantity: int = 1,
-    parentId: str | None = None,
-    labelIds: list[str] | None = None,
-    serialNumber: str | None = None,
-    modelNumber: str | None = None,
+    parent_id: str | None = None,
+    label_ids: list[str] | None = None,
+    serial_number: str | None = None,
+    model_number: str | None = None,
     manufacturer: str | None = None,
-    purchasePrice: float | None = None,
+    purchase_price: float | None = None,
     notes: str | None = None,
     ctx: Context | None = None
-) -> str:
+) -> dict:
+    """Creates a new item and performs metadata enrichment."""
     if ctx:
         await ctx.info(f"Creating item '{name}'...")
+
     create_payload = {
         "name": name,
         "quantity": int(quantity),
         "description": description or "",
-        "labelIds": labelIds or [],
-        "locationId": locationId
+        "labelIds": label_ids or [],
+        "locationId": location_id
     }
-    if parentId:
-        create_payload["parentId"] = parentId
+    if parent_id:
+        create_payload["parentId"] = parent_id
+
+    # Phase 1: Create basic item
     created_item = await client.request("POST", "items", json=create_payload)
     item_id = created_item["id"]
+
     if ctx:
-        await ctx.report_progress(50, 100, message="Item created, enriching metadata...")
+        await ctx.report_progress(50, 100)
+
     try:
+        # Phase 2: Enrich metadata via PUT
         update_payload = created_item.copy()
+
+        # Flatten object references
         if loc := created_item.get("location"):
             update_payload["locationId"] = loc["id"]
-        elif locationId:
-            update_payload["locationId"] = locationId
+        elif location_id:
+            update_payload["locationId"] = location_id
+
         if parent := created_item.get("parent"):
             update_payload["parentId"] = parent["id"]
-        elif parentId:
-            update_payload["parentId"] = parentId
+        elif parent_id:
+            update_payload["parentId"] = parent_id
+
         if labels := created_item.get("labels"):
             update_payload["labelIds"] = [label["id"] for label in labels]
-        elif labelIds:
-            update_payload["labelIds"] = labelIds
+        elif label_ids:
+            update_payload["labelIds"] = label_ids
+
         if notes is not None:
             update_payload["notes"] = notes
-        if serialNumber is not None:
-            update_payload["serialNumber"] = serialNumber
-        if modelNumber is not None:
-            update_payload["modelNumber"] = modelNumber
+        if serial_number is not None:
+            update_payload["serialNumber"] = serial_number
+        if model_number is not None:
+            update_payload["modelNumber"] = model_number
         if manufacturer is not None:
             update_payload["manufacturer"] = manufacturer
-        if purchasePrice is not None:
-            update_payload["purchasePrice"] = str(purchasePrice)
+        if purchase_price is not None:
+            update_payload["purchasePrice"] = str(purchase_price)
+
+        # Initialize required date/string fields if missing
         for key in ["purchaseFrom", "soldTo", "soldNotes", "warrantyDetails"]:
             if key not in update_payload:
                 update_payload[key] = ""
         for key in ["purchaseTime", "soldTime", "warrantyExpires"]:
             if key not in update_payload:
                 update_payload[key] = "0001-01-01T00:00:00Z"
+
         final_item = await client.request("PUT", f"items/{item_id}", json=update_payload)
+
         if ctx:
-            await ctx.report_progress(100, 100, message="Item enriched successfully.")
-        return f"Created and Enriched Item: {json.dumps(final_item, indent=2)}"
+            await ctx.report_progress(100, 100)
+
+        return final_item
+
     except Exception as e:
+        # Rollback
         try:
             await client.request("DELETE", f"items/{item_id}")
         except Exception:
@@ -178,27 +202,33 @@ async def handle_update_item(
     name: str | None = None,
     description: str | None = None,
     quantity: int | None = None,
-    locationId: str | None = None,
-    parentId: str | None = None,
-    labelIds: list[str] | None = None,
-    serialNumber: str | None = None,
-    modelNumber: str | None = None,
+    location_id: str | None = None,
+    parent_id: str | None = None,
+    label_ids: list[str] | None = None,
+    serial_number: str | None = None,
+    model_number: str | None = None,
     manufacturer: str | None = None,
-    purchasePrice: float | None = None,
+    purchase_price: float | None = None,
     notes: str | None = None,
     fields: list[dict] | None = None,
     ctx: Context | None = None
-) -> str:
+) -> dict:
+    """Update an existing item using merged data via PUT."""
     if ctx:
         await ctx.info(f"Updating item {id}...")
+
     existing = await client.request("GET", f"items/{id}")
     update_payload = existing.copy()
+
+    # Flatten object references
     if loc := existing.get("location"):
         update_payload["locationId"] = loc["id"]
     if parent := existing.get("parent"):
         update_payload["parentId"] = parent["id"]
     if labels := existing.get("labels"):
         update_payload["labelIds"] = [label["id"] for label in labels]
+
+    # Apply updates
     if name is not None:
         update_payload["name"] = name
     if description is not None:
@@ -207,106 +237,154 @@ async def handle_update_item(
         update_payload["notes"] = notes
     if quantity is not None:
         update_payload["quantity"] = int(quantity)
-    if locationId is not None:
-        update_payload["locationId"] = locationId
-    if parentId is not None:
-        update_payload["parentId"] = parentId
-    if labelIds is not None:
-        update_payload["labelIds"] = labelIds
-    if serialNumber is not None:
-        update_payload["serialNumber"] = serialNumber
-    if modelNumber is not None:
-        update_payload["modelNumber"] = modelNumber
+    if location_id is not None:
+        update_payload["locationId"] = location_id
+    if parent_id is not None:
+        update_payload["parentId"] = parent_id
+    if label_ids is not None:
+        update_payload["labelIds"] = label_ids
+    if serial_number is not None:
+        update_payload["serialNumber"] = serial_number
+    if model_number is not None:
+        update_payload["modelNumber"] = model_number
     if manufacturer is not None:
         update_payload["manufacturer"] = manufacturer
-    if purchasePrice is not None:
-        update_payload["purchasePrice"] = str(purchasePrice)
+    if purchase_price is not None:
+        update_payload["purchasePrice"] = str(purchase_price)
     if fields is not None:
         update_payload["fields"] = fields
+
+    # Preserve existing dates or use zero-dates
     for key in ["purchaseFrom", "soldTo", "soldNotes", "warrantyDetails"]:
         if key not in update_payload:
             update_payload[key] = existing.get(key, "")
     for key in ["purchaseTime", "soldTime", "warrantyExpires"]:
         if key not in update_payload:
             update_payload[key] = existing.get(key, "0001-01-01T00:00:00Z")
+
     data = await client.request("PUT", f"items/{id}", json=update_payload)
+
     if ctx:
         await ctx.info(f"Item {id} updated successfully.")
-    return f"Updated Item: {json.dumps(data, indent=2)}"
+
+    return data
 
 @protect_resource(resource_type="items", action="update")
-async def handle_patch_item(client: HomeboxClient, id: str, locationId: str | None = None, quantity: int | None = None, labelIds: list[str] | None = None) -> str:
+async def handle_patch_item(
+    client: HomeboxClient,
+    id: str,
+    location_id: str | None = None,
+    quantity: int | None = None,
+    label_ids: list[str] | None = None
+) -> dict:
+    """Partial update for items via the PATCH endpoint."""
     payload = {}
-    if locationId:
-        payload["locationId"] = locationId
+    if location_id:
+        payload["locationId"] = location_id
     if quantity is not None:
         payload["quantity"] = quantity
-    if labelIds:
-        payload["labelIds"] = labelIds
-    data = await client.request("PATCH", f"items/{id}", json=payload)
-    return f"Patched Item: {json.dumps(data, indent=2)}"
+    if label_ids:
+        payload["labelIds"] = label_ids
+
+    return await client.request("PATCH", f"items/{id}", json=payload)
 
 @protect_resource(resource_type="items", action="delete")
 async def handle_delete_item(client: HomeboxClient, id: str) -> str:
+    """Delete an item by ID."""
     await client.request("DELETE", f"items/{id}")
     return f"Deleted item {id}"
 
-async def handle_get_item_by_asset_id(client: HomeboxClient, id: str) -> str:
-    data = await client.request("GET", f"assets/{id}")
-    return json.dumps(data, indent=2)
+async def handle_get_item_by_asset_id(client: HomeboxClient, id: str) -> dict:
+    """Get Item by Asset ID."""
+    return await client.request("GET", f"assets/{id}")
 
 async def handle_export_items(client: HomeboxClient) -> str:
+    """Export all items to CSV format."""
     return await client.request("GET", "items/export")
 
-async def handle_get_item_fields(client: HomeboxClient) -> str:
-    data = await client.request("GET", "items/fields")
-    return json.dumps(data, indent=2)
+async def handle_get_item_fields(client: HomeboxClient) -> list[str]:
+    """Get all custom field names."""
+    return await client.request("GET", "items/fields")
 
-async def handle_get_item_field_values(client: HomeboxClient, field: str) -> str:
-    try:
-        data = await client.request("GET", "items/fields/values", params={"field": field})
-        return json.dumps(data, indent=2)
-    except Exception as e:
-        return f"Error fetching item field values for '{field}': {str(e)}"
+async def handle_get_item_field_values(client: HomeboxClient, field: str) -> list[str]:
+    """Get all unique values for a specific custom field."""
+    return await client.request("GET", "items/fields/values", params={"field": field})
 
-async def handle_duplicate_item(client: HomeboxClient, id: str, copyAttachments: bool = False, copyCustomFields: bool = False, copyMaintenance: bool = False, copyPrefix: str = "Copy of ") -> str:
-    payload = {"copyAttachments": copyAttachments, "copyCustomFields": copyCustomFields, "copyMaintenance": copyMaintenance, "copyPrefix": copyPrefix}
-    data = await client.request("POST", f"items/{id}/duplicate", json=payload)
-    return f"Duplicated Item: {json.dumps(data, indent=2)}"
+async def handle_duplicate_item(
+    client: HomeboxClient,
+    id: str,
+    copy_attachments: bool = False,
+    copy_custom_fields: bool = False,
+    copy_maintenance: bool = False,
+    copy_prefix: str = "Copy of "
+) -> dict:
+    """Creates a copy of an item."""
+    payload = {
+        "copyAttachments": copy_attachments,
+        "copyCustomFields": copy_custom_fields,
+        "copyMaintenance": copy_maintenance,
+        "copyPrefix": copy_prefix
+    }
+    return await client.request("POST", f"items/{id}/duplicate", json=payload)
 
-async def handle_get_item_path(client: HomeboxClient, id: str) -> str:
-    data = await client.request("GET", f"items/{id}/path")
-    return json.dumps(data, indent=2)
+async def handle_get_item_path(client: HomeboxClient, id: str) -> list[dict]:
+    """Get the full breadcrumb path of an item's location."""
+    return await client.request("GET", f"items/{id}/path")
 
-async def handle_get_item_attachment_token(client: HomeboxClient, id: str, attachment_id: str) -> str:
-    data = await client.request("GET", f"items/{id}/attachments/{attachment_id}")
-    return json.dumps(data, indent=2)
+async def handle_get_item_attachment_token(client: HomeboxClient, id: str, attachment_id: str) -> dict:
+    """Get the download details for an item attachment."""
+    return await client.request("GET", f"items/{id}/attachments/{attachment_id}")
 
 async def handle_delete_item_attachment(client: HomeboxClient, id: str, attachment_id: str) -> str:
+    """Permanently delete an item attachment."""
     await client.request("DELETE", f"items/{id}/attachments/{attachment_id}")
-    return "Deleted attachment"
+    return f"Deleted attachment {attachment_id} from item {id}"
 
-async def handle_update_item_attachment(client: HomeboxClient, id: str, attachment_id: str, primary: bool | None = None, title: str | None = None, type: str | None = None) -> str:
+async def handle_update_item_attachment(
+    client: HomeboxClient,
+    id: str,
+    attachment_id: str,
+    primary: bool | None = None,
+    title: str | None = None,
+    type: str | None = None
+) -> dict:
+    """Update attachment metadata."""
     item = await client.request("GET", f"items/{id}")
     existing = next((a for a in item.get("attachments", []) if a["id"] == attachment_id), None)
     if not existing:
-        return f"Error: Attachment {attachment_id} not found on item {id}"
-    payload = {"primary": primary if primary is not None else existing.get("primary", False), "title": title if title is not None else existing.get("title", ""), "type": type if type is not None else existing.get("type", "attachment")}
-    data = await client.request("PUT", f"items/{id}/attachments/{attachment_id}", json=payload)
-    return f"Updated Attachment: {json.dumps(data, indent=2)}"
+        raise ValueError(f"Attachment {attachment_id} not found on item {id}")
 
-async def handle_get_item_maintenance(client: HomeboxClient, id: str, status: str = "both") -> str:
-    data = await client.request("GET", f"items/{id}/maintenance", params={"status": status})
-    return json.dumps(data, indent=2)
+    payload = {
+        "primary": primary if primary is not None else existing.get("primary", False),
+        "title": title if title is not None else existing.get("title", ""),
+        "type": type if type is not None else existing.get("type", "attachment")
+    }
 
-async def handle_create_item_maintenance(client: HomeboxClient, id: str, name: str, description: str | None = None, scheduledDate: str | None = None, completedDate: str | None = None, cost: float = 0) -> str:
+    return await client.request("PUT", f"items/{id}/attachments/{attachment_id}", json=payload)
+
+async def handle_get_item_maintenance(client: HomeboxClient, id: str, status: str = "both") -> list[dict]:
+    """Get maintenance logs for a specific item."""
+    return await client.request("GET", f"items/{id}/maintenance", params={"status": status})
+
+async def handle_create_item_maintenance(
+    client: HomeboxClient,
+    id: str,
+    name: str,
+    description: str | None = None,
+    scheduled_date: str | None = None,
+    completed_date: str | None = None,
+    cost: float = 0
+) -> dict:
+    """Create a maintenance entry for an item."""
     now_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-    payload = {"name": name, "cost": str(cost), "description": description or "", "scheduledDate": scheduledDate or now_iso, "completedDate": completedDate or "0001-01-01T00:00:00Z"}
-    try:
-        data = await client.request("POST", f"items/{id}/maintenance", json=payload)
-        return json.dumps(data, indent=2)
-    except Exception as e:
-        return f"Error creating maintenance entry: {str(e)}"
+    payload = {
+        "name": name,
+        "cost": str(cost),
+        "description": description or "",
+        "scheduledDate": scheduled_date or now_iso,
+        "completedDate": completed_date or "0001-01-01T00:00:00Z"
+    }
+    return await client.request("POST", f"items/{id}/maintenance", json=payload)
 
 async def handle_upload_item_attachment(
     client: HomeboxClient,
@@ -314,166 +392,300 @@ async def handle_upload_item_attachment(
     file_path: str,
     primary: bool = False,
     attachment_type: str = "photo"
-) -> str:
+) -> dict:
+    """Uploads a file as an item attachment."""
     file_name, mime_type, file_content = "upload", 'application/octet-stream', b""
+
     if file_path.startswith("data:"):
-        try:
-            header, encoded = file_path.split(",", 1)
-            mime_type = header.split(";")[0].split(":")[1]
-            file_content = base64.b64decode(encoded)
-            file_name = f"upload{mimetypes.guess_extension(mime_type) or '.bin'}"
-        except Exception as e:
-            return f"Error: Failed to decode base64 data: {str(e)}"
+        header, encoded = file_path.split(",", 1)
+        mime_type = header.split(";")[0].split(":")[1]
+        file_content = base64.b64decode(encoded)
+        file_name = f"upload{mimetypes.guess_extension(mime_type) or '.bin'}"
+
     elif file_path.startswith(("http://", "https://")):
-        try:
-            async with httpx.AsyncClient() as http_client:
-                resp = await http_client.get(file_path, follow_redirects=True)
-                resp.raise_for_status()
-                file_content = resp.content
-                mime_type = resp.headers.get("content-type", "").split(";")[0] or mime_type
-                file_name = os.path.basename(file_path.split("?")[0]) or "upload"
-                if "." not in file_name:
-                    file_name += (mimetypes.guess_extension(mime_type) or "")
-        except Exception as e:
-            return f"Error: Failed to download from URL: {str(e)}"
+        async with httpx.AsyncClient() as http_client:
+            resp = await http_client.get(file_path, follow_redirects=True)
+            resp.raise_for_status()
+            file_content = resp.content
+            mime_type = resp.headers.get("content-type", "").split(";")[0] or mime_type
+            file_name = os.path.basename(file_path.split("?")[0]) or "upload"
+            if "." not in file_name:
+                file_name += (mimetypes.guess_extension(mime_type) or "")
+
     else:
-        if not os.path.exists(file_path):
-            return f"Error: File not found at {file_path}"
-        file_name, mime_type = os.path.basename(file_path), mimetypes.guess_type(file_path)[0] or mime_type
-        try:
-            with open(file_path, 'rb') as f:
-                file_content = f.read()
-        except Exception as e:
-            return f"Error: Failed to read local file: {str(e)}"
+        path = anyio.Path(file_path)
+        if not await path.exists():
+            raise FileNotFoundError(f"File not found at {file_path}")
+        file_name = path.name
+        mime_type = mimetypes.guess_type(file_path)[0] or mime_type
+        file_content = await path.read_bytes()
+
     files = {'file': (file_name, file_content, mime_type)}
-    try:
-        result = await client.request("POST", f"items/{item_id}/attachments", files=files, data={'name': file_name, 'type': attachment_type, 'primary': 'true' if primary else 'false'})
-        return f"Attachment uploaded successfully: {json.dumps(result, indent=2)}"
-    except Exception as e:
-        return f"Failed to upload attachment: {str(e)}"
+    attachment_meta = {
+        'name': file_name,
+        'type': attachment_type,
+        'primary': 'true' if primary else 'false'
+    }
+
+    return await client.request("POST", f"items/{item_id}/attachments", files=files, data=attachment_meta)
 
 async def handle_import_items(client: HomeboxClient, file_path: str) -> str:
-    if not os.path.exists(file_path):
-        return f"Error: File not found at {file_path}"
-    with open(file_path, 'rb') as f:
-        file_content = f.read()
-    try:
-        await client.request("POST", "items/import", files={'csv': (os.path.basename(file_path), file_content, 'text/csv')})
-        return "Items imported successfully."
-    except Exception as e:
-        return f"Failed to import items: {str(e)}"
+    """Import items from a CSV file."""
+    path = anyio.Path(file_path)
+    if not await path.exists():
+        raise FileNotFoundError(f"File not found at {file_path}")
+
+    file_content = await path.read_bytes()
+    payload_files = {'csv': (path.name, file_content, 'text/csv')}
+    await client.request("POST", "items/import", files=payload_files)
+    return "Items imported successfully."
 
 # --- Registration ---
 
 def register_items_tools(mcp: FastMCP, client: HomeboxClient):
-    @mcp.tool()
+    @mcp.tool(output_schema={"type": "object"})
     async def list_items(
-        q: Annotated[str | None, Field(description="Search string")] = None,
-        page: Annotated[int, Field(description="Page number", ge=1)] = 1,
-        pageSize: Annotated[int, Field(description="Items per page", ge=1, le=100)] = 50,
-        labels: Annotated[list[str] | None, Field(description="Label IDs filter")] = None,
-        locations: Annotated[list[str] | None, Field(description="Location IDs filter")] = None,
-        parentIds: Annotated[list[str] | None, Field(description="Parent Item IDs filter")] = None,
-        negateLabels: Annotated[bool, Field(description="Negate label filter")] = False,
-        onlyWithoutPhoto: Annotated[bool, Field(description="Only items without a photo")] = False,
-        onlyWithPhoto: Annotated[bool, Field(description="Only items with a photo")] = False,
-        includeArchived: Annotated[bool, Field(description="Include archived items")] = False,
-        orderBy: Annotated[str | None, Field(description="Sort order (e.g. 'name', '-name', 'updated_at')")] = None
-    ) -> str:
+        q: Annotated[str | None, "Search query"] = None,
+        page: Annotated[int, "Page number"] = 1,
+        page_size: Annotated[int, "Items per page"] = 50,
+        labels: Annotated[list[str] | None, "Label IDs filter"] = None,
+        locations: Annotated[list[str] | None, "Location IDs filter"] = None,
+        parent_ids: Annotated[list[str] | None, "Parent Item IDs filter"] = None,
+        negate_labels: Annotated[bool, "Negate label filter"] = False,
+        only_without_photo: Annotated[bool, "Only items without a photo"] = False,
+        only_with_photo: Annotated[bool, "Only items with a photo"] = False,
+        include_archived: Annotated[bool, "Include archived items"] = False,
+        order_by: Annotated[str | None, "Sort order (e.g. 'name', '-name', 'updated_at')"] = None
+    ) -> dict:
         """Query All Items. Supports filtering and pagination."""
-        return await handle_list_items(client, q, page, pageSize, labels, locations, parentIds, negateLabels, onlyWithoutPhoto, onlyWithPhoto, includeArchived, orderBy)
-    @mcp.tool()
-    async def get_item(id: str) -> str:
+        res = await handle_list_items(
+            client, q=q, page=page, page_size=page_size, labels=labels,
+            locations=locations, parent_ids=parent_ids, negate_labels=negate_labels,
+            only_without_photo=only_without_photo, only_with_photo=only_with_photo,
+            include_archived=include_archived, order_by=order_by
+        )
+        return res
+
+    @mcp.tool(output_schema={"type": "object"})
+    async def list_archived_items(
+        q: Annotated[str | None, "Search query"] = None,
+        page: Annotated[int, "Page number"] = 1,
+        page_size: Annotated[int, "Items per page"] = 50
+    ) -> dict:
+        """Query only archived items in the inventory."""
+        return await handle_list_items(
+            client, q=q, page=page, page_size=page_size, include_archived=True
+        )
+
+    @mcp.tool(output_schema={"type": "object"})
+    async def get_item(
+        id: Annotated[str, "ID of the item"]
+    ) -> dict:
         """Get Item details by ID"""
-        return await handle_get_item(client, id)
+        return await handle_get_item(client, id=id)
+
     @mcp.tool()
-    async def get_item_link(query: str) -> str:
-        """Get the direct link to an item by searching for it using asset ID, name, or description."""
-        return await handle_get_item_link(client, query)
-    @mcp.tool()
+    async def get_item_link(
+        query: Annotated[str, "Asset ID, name, or description"]
+    ) -> str:
+        """Get the direct link to an item by searching for it."""
+        return await handle_get_item_link(client, query=query)
+
+    @mcp.tool(output_schema={"type": "object"})
     async def create_item(
-        name: str, locationId: str, description: str | None = None, quantity: int = 1, parentId: str | None = None,
-        labelIds: list[str] | None = None, serialNumber: str | None = None, modelNumber: str | None = None,
-        manufacturer: str | None = None, purchasePrice: float | None = None, notes: str | None = None, ctx: Context = None
-    ) -> str:
-        """Create a new item. Handles complex fields via a two-step create-and-update process. locationId is required."""
-        return await handle_create_item(client, name, locationId, description, quantity, parentId, labelIds, serialNumber, modelNumber, manufacturer, purchasePrice, notes, ctx)
-    @mcp.tool()
+        name: Annotated[str, "Name of the item"],
+        location_id: Annotated[str, "ID of the location"],
+        description: Annotated[str | None, "Item description"] = None,
+        quantity: Annotated[int, "Item quantity"] = 1,
+        parent_id: Annotated[str | None, "ID of the parent item"] = None,
+        label_ids: Annotated[list[str] | None, "List of label UUIDs"] = None,
+        serial_number: Annotated[str | None, "Item serial number"] = None,
+        model_number: Annotated[str | None, "Item model number"] = None,
+        manufacturer: Annotated[str | None, "Manufacturer name"] = None,
+        purchase_price: Annotated[float | None, "Purchase price"] = None,
+        notes: Annotated[str | None, "Internal notes"] = None,
+        ctx: Context | None = None
+    ) -> dict:
+        """Create a new item. Handles complex fields via a two-step process."""
+        return await handle_create_item(
+            client, name=name, location_id=location_id, description=description,
+            quantity=quantity, parent_id=parent_id, label_ids=label_ids,
+            serial_number=serial_number, model_number=model_number,
+            manufacturer=manufacturer, purchase_price=purchase_price,
+            notes=notes, ctx=ctx
+        )
+
+    @mcp.tool(output_schema={"type": "object"})
     async def update_item(
-        id: str, name: str | None = None, description: str | None = None, quantity: int | None = None,
-        locationId: str | None = None, parentId: str | None = None, labelIds: list[str] | None = None,
-        serialNumber: str | None = None, modelNumber: str | None = None, manufacturer: str | None = None,
-        purchasePrice: float | None = None, notes: str | None = None, fields: list[dict] | None = None, ctx: Context = None
-    ) -> str:
+        id: Annotated[str, "ID of the item"],
+        name: Annotated[str | None, "New name for the item"] = None,
+        description: Annotated[str | None, "New description for the item"] = None,
+        quantity: Annotated[int | None, "New quantity for the item"] = None,
+        location_id: Annotated[str | None, "New location ID"] = None,
+        parent_id: Annotated[str | None, "New parent item ID"] = None,
+        label_ids: Annotated[list[str] | None, "New list of label UUIDs"] = None,
+        serial_number: Annotated[str | None, "New serial number"] = None,
+        model_number: Annotated[str | None, "New model number"] = None,
+        manufacturer: Annotated[str | None, "New manufacturer name"] = None,
+        purchase_price: Annotated[float | None, "New purchase price"] = None,
+        notes: Annotated[str | None, "New internal notes"] = None,
+        fields: Annotated[list[dict] | None, "Custom fields list"] = None,
+        ctx: Context | None = None
+    ) -> dict:
         """Update an existing item (replaces existing with merged data)"""
-        return await handle_update_item(client, id, name, description, quantity, locationId, parentId, labelIds, serialNumber, modelNumber, manufacturer, purchasePrice, notes, fields, ctx)
-    @mcp.tool()
-    async def patch_item(id: str, locationId: str | None = None, quantity: int | None = None, labelIds: list[str] | None = None) -> str:
+        return await handle_update_item(
+            client, id=id, name=name, description=description, quantity=quantity,
+            location_id=location_id, parent_id=parent_id, label_ids=label_ids,
+            serial_number=serial_number, model_number=model_number,
+            manufacturer=manufacturer, purchase_price=purchase_price,
+            notes=notes, fields=fields, ctx=ctx
+        )
+
+    @mcp.tool(output_schema={"type": "object"})
+    async def patch_item(
+        id: Annotated[str, "ID of the item"],
+        location_id: Annotated[str | None, "ID of the destination location"] = None,
+        quantity: Annotated[int | None, "New quantity"] = None,
+        label_ids: Annotated[list[str] | None, "New list of label UUIDs"] = None
+    ) -> dict:
         """Update item with PATCH (partial update). Only supports moving, quantity change, and labels."""
-        return await handle_patch_item(client, id, locationId, quantity, labelIds)
+        return await handle_patch_item(
+            client, id=id, location_id=location_id, quantity=quantity,
+            label_ids=label_ids
+        )
+
     @mcp.tool()
-    async def delete_item(id: str) -> str:
+    async def delete_item(
+        id: Annotated[str, "ID of the item"]
+    ) -> str:
         """Delete an item"""
-        return await handle_delete_item(client, id)
-    @mcp.tool()
-    async def get_item_by_asset_id(id: str) -> str:
-        """Get Item by Asset ID (e.g. 1234)"""
-        return await handle_get_item_by_asset_id(client, id)
+        return await handle_delete_item(client, id=id)
+
+    @mcp.tool(output_schema={"type": "object"})
+    async def get_item_by_asset_id(
+        id: Annotated[str, "Asset ID (e.g. 1234)"]
+    ) -> dict:
+        """Get Item by Asset ID"""
+        return await handle_get_item_by_asset_id(client, id=id)
+
     @mcp.tool()
     async def export_items() -> str:
         """Export items to CSV"""
         return await handle_export_items(client)
-    @mcp.tool()
-    async def get_item_fields() -> str:
+
+    @mcp.tool(output_schema={"type": "object"})
+    async def get_item_fields() -> dict:
         """Get all custom field names"""
-        return await handle_get_item_fields(client)
-    @mcp.tool()
-    async def get_item_field_values(field: str) -> str:
+        res = await handle_get_item_fields(client)
+        return {"fields": res}
+
+    @mcp.tool(output_schema={"type": "object"})
+    async def get_item_field_values(
+        field: Annotated[str, "Custom field name"]
+    ) -> dict:
         """Get all custom field values for a specific field name"""
-        return await handle_get_item_field_values(client, field)
-    @mcp.tool()
-    async def duplicate_item(id: str, copyAttachments: bool = False, copyCustomFields: bool = False, copyMaintenance: bool = False, copyPrefix: str = "Copy of ") -> str:
+        res = await handle_get_item_field_values(client, field=field)
+        return {"values": res}
+
+    @mcp.tool(output_schema={"type": "object"})
+    async def duplicate_item(
+        id: Annotated[str, "ID of the item to duplicate"],
+        copy_attachments: Annotated[bool, "Whether to copy attachments"] = False,
+        copy_custom_fields: Annotated[bool, "Whether to copy custom fields"] = False,
+        copy_maintenance: Annotated[bool, "Whether to copy maintenance logs"] = False,
+        copy_prefix: Annotated[str, "Prefix for the duplicated item name"] = "Copy of "
+    ) -> dict:
         """Duplicate an item"""
-        return await handle_duplicate_item(client, id, copyAttachments, copyCustomFields, copyMaintenance, copyPrefix)
-    @mcp.tool()
-    async def get_item_path(id: str) -> str:
+        return await handle_duplicate_item(
+            client, id=id, copy_attachments=copy_attachments,
+            copy_custom_fields=copy_custom_fields, copy_maintenance=copy_maintenance,
+            copy_prefix=copy_prefix
+        )
+
+    @mcp.tool(output_schema={"type": "object"})
+    async def get_item_path(
+        id: Annotated[str, "ID of the item"]
+    ) -> dict:
         """Get full path of an item"""
-        return await handle_get_item_path(client, id)
+        res = await handle_get_item_path(client, id=id)
+        return {"path": res}
+
     @mcp.tool()
-    async def get_item_attachment_token(id: str, attachment_id: str) -> str:
+    async def get_item_attachment_token(
+        id: Annotated[str, "ID of the item"],
+        attachment_id: Annotated[str, "ID of the attachment"]
+    ) -> str:
         """Get the download token for an item attachment"""
-        return await handle_get_item_attachment_token(client, id, attachment_id)
+        res = await handle_get_item_attachment_token(client, id=id, attachment_id=attachment_id)
+        return str(res)
+
     @mcp.tool()
-    async def delete_item_attachment(id: str, attachment_id: str) -> str:
+    async def delete_item_attachment(
+        id: Annotated[str, "ID of the item"],
+        attachment_id: Annotated[str, "ID of the attachment"]
+    ) -> str:
         """Delete item attachment"""
-        return await handle_delete_item_attachment(client, id, attachment_id)
-    @mcp.tool()
-    async def update_item_attachment(id: str, attachment_id: str, primary: bool | None = None, title: str | None = None, type: str | None = None) -> str:
+        return await handle_delete_item_attachment(client, id=id, attachment_id=attachment_id)
+
+    @mcp.tool(output_schema={"type": "object"})
+    async def update_item_attachment(
+        id: Annotated[str, "ID of the item"],
+        attachment_id: Annotated[str, "ID of the attachment"],
+        primary: Annotated[bool | None, "Whether this is the primary photo"] = None,
+        type: Annotated[str | None, "Type of attachment"] = None
+    ) -> dict:
         """Update item attachment details."""
-        return await handle_update_item_attachment(client, id, attachment_id, primary, title, type)
-    @mcp.tool()
-    async def get_item_maintenance(id: str, status: str = "both") -> str:
+        return await handle_update_item_attachment(
+            client, id=id, attachment_id=attachment_id, primary=primary, type=type
+        )
+
+    @mcp.tool(output_schema={"type": "object"})
+    async def get_item_maintenance(
+        id: Annotated[str, "ID of the item"],
+        status: Annotated[str, "Filter by status: 'completed', 'scheduled', or 'both'"] = "both"
+    ) -> dict:
         """Get maintenance log"""
-        return await handle_get_item_maintenance(client, id, status)
-    @mcp.tool()
-    async def create_item_maintenance(id: str, name: str, description: str | None = None, scheduledDate: str | None = None, completedDate: str | None = None, cost: float = 0) -> str:
+        res = await handle_get_item_maintenance(client, id=id, status=status)
+        return {"maintenance": res}
+
+    @mcp.tool(output_schema={"type": "object"})
+    async def create_item_maintenance(
+        id: Annotated[str, "ID of the item"],
+        name: Annotated[str, "Name of the maintenance entry"],
+        description: Annotated[str | None, "Detailed description"] = None,
+        scheduled_date: Annotated[str | None, "ISO 8601 scheduled date"] = None,
+        completed_date: Annotated[str | None, "ISO 8601 completion date"] = None,
+        cost: Annotated[float, "Maintenance cost"] = 0
+    ) -> dict:
         """Create maintenance entry"""
-        return await handle_create_item_maintenance(client, id, name, description, scheduledDate, completedDate, cost)
-    @mcp.tool()
-    async def upload_item_attachment(item_id: str, file_path: str, primary: bool = False, attachment_type: str = "photo") -> str:
+        return await handle_create_item_maintenance(
+            client, id=id, name=name, description=description,
+            scheduled_date=scheduled_date, completed_date=completed_date, cost=cost
+        )
+
+    @mcp.tool(output_schema={"type": "object"})
+    async def upload_item_attachment(
+        item_id: Annotated[str, "ID of the item"],
+        file_path: Annotated[str, "Local path, data-uri, or URL of the file"],
+        primary: Annotated[bool, "Whether this is the primary photo"] = False,
+        attachment_type: Annotated[str, "Type of attachment (e.g. 'photo', 'manual')"] = "photo"
+    ) -> dict:
         """Upload an attachment to an item."""
-        return await handle_upload_item_attachment(client, item_id, file_path, primary, attachment_type)
+        return await handle_upload_item_attachment(
+            client, item_id=item_id, file_path=file_path, primary=primary,
+            attachment_type=attachment_type
+        )
+
     @mcp.tool()
-    async def import_items(file_path: str) -> str:
+    async def import_items(
+        file_path: Annotated[str, "Local path to the CSV file"]
+    ) -> str:
         """Import items from a CSV file."""
-        return await handle_import_items(client, file_path)
+        return await handle_import_items(client, file_path=file_path)
+
     @mcp.tool()
-    async def get_item_image(id: str) -> Image:
+    async def get_item_image(
+        id: Annotated[str, "ID of the item"]
+    ) -> Image:
         """Retrieve the primary image for an item."""
-        return await handle_get_item_image(client, id)
-    # Tool Transformation Example: Specialized archived items list
-    mcp.add_tool(Tool.from_tool(
-        list_items, name="list_archived_items",
-        description="Query only archived items in the inventory.",
-        transform_args={"includeArchived": ArgTransform(hide=True, default=True)}
-    ))
+        return await handle_get_item_image(client, id=id)

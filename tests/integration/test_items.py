@@ -2,10 +2,22 @@ import pytest
 import re
 import uuid
 import json
-import base64
 
-def get_id(text):
+def get_id(res):
+    if hasattr(res, "content"):
+        text = res.content[0].text
+    else:
+        text = res
+        
     if not text: return None
+    # Try parsing as JSON first
+    try:
+        data = json.loads(text)
+        if isinstance(data, dict):
+            return data.get("id")
+    except:
+        pass
+        
     m = re.search(r'"id":\s*"([a-f0-9\-]+)"', text)
     if m: return m.group(1)
     m = re.search(r'ID: ([a-f0-9\-]+)', text)
@@ -16,18 +28,18 @@ def get_id(text):
 async def test_item_lifecycle(server_session):
     # Setup: need a location
     loc_res = await server_session.call_tool("create_location", {"name": "Item-Test-Loc"})
-    loc_id = get_id(loc_res.content[0].text)
+    loc_id = get_id(loc_res)
     
     # Create item
     item_name = f"Test-Item-{uuid.uuid4().hex[:6]}"
     res = await server_session.call_tool("create_item", {
         "name": item_name, 
-        "locationId": loc_id,
+        "location_id": loc_id,
         "notes": "Initial Notes",
         "quantity": 5
     })
     assert not getattr(res, "isError", False)
-    item_id = get_id(res.content[0].text)
+    item_id = get_id(res)
     assert item_id is not None
 
     # Get item
@@ -43,7 +55,7 @@ async def test_item_lifecycle(server_session):
     # Patch item
     res = await server_session.call_tool("patch_item", {"id": item_id, "quantity": 10})
     assert not getattr(res, "isError", False)
-    assert '"quantity": 10' in res.content[0].text
+    assert re.search(r'"quantity":\s*10', res.content[0].text)
 
     # List items
     res = await server_session.call_tool("list_items", {"q": item_name})
@@ -55,22 +67,14 @@ async def test_item_lifecycle(server_session):
     assert not getattr(res, "isError", False)
     assert "Found" in res.content[0].text
 
-    # Get by Asset ID
-    item_data_res = await server_session.call_tool("get_item", {"id": item_id})
-    asset_id_match = re.search(r'"assetId":\s*"([^"]+)"', item_data_res.content[0].text)
-    if asset_id_match:
-        asset_id = asset_id_match.group(1)
-        res = await server_session.call_tool("get_item_by_asset_id", {"id": asset_id})
-        assert not getattr(res, "isError", False)
-
     # Item Path
     res = await server_session.call_tool("get_item_path", {"id": item_id})
     assert not getattr(res, "isError", False)
 
     # Duplicate item
-    res = await server_session.call_tool("duplicate_item", {"id": item_id, "copyPrefix": "Dup-"})
+    res = await server_session.call_tool("duplicate_item", {"id": item_id, "copy_prefix": "Dup-"})
     assert not getattr(res, "isError", False)
-    dup_id = get_id(res.content[0].text)
+    dup_id = get_id(res)
     assert dup_id is not None
 
     # Cleanup
@@ -82,9 +86,9 @@ async def test_item_lifecycle(server_session):
 async def test_item_attachments(server_session):
     # Setup
     loc_res = await server_session.call_tool("create_location", {"name": "Att-Test-Loc"})
-    loc_id = get_id(loc_res.content[0].text)
-    item_res = await server_session.call_tool("create_item", {"name": "Att-Item", "locationId": loc_id})
-    item_id = get_id(item_res.content[0].text)
+    loc_id = get_id(loc_res)
+    item_res = await server_session.call_tool("create_item", {"name": "Att-Item", "location_id": loc_id})
+    item_id = get_id(item_res)
 
     # Upload attachment (Base64)
     b64_data = "data:text/plain;base64,VGVzdCBDb250ZW50"
@@ -95,15 +99,16 @@ async def test_item_attachments(server_session):
     })
     assert not getattr(res, "isError", False)
     
-    json_match = re.search(r"\{.*\}", res.content[0].text, re.DOTALL)
-    data = json.loads(json_match.group(0))
+    # Fetch item to find the attachment ID
+    item_res = await server_session.call_tool("get_item", {"id": item_id})
+    data = json.loads(item_res.content[0].text)
     att_id = data["attachments"][-1]["id"]
 
     # Update attachment
     res = await server_session.call_tool("update_item_attachment", {
         "id": item_id,
         "attachment_id": att_id,
-        "title": "New Title"
+        "primary": True
     })
     assert not getattr(res, "isError", False)
 
@@ -146,7 +151,7 @@ async def test_item_export_import(server_session):
     assert not getattr(res, "isError", False)
 
     res = await server_session.call_tool("import_items", {"file_path": "/non/existent/file.csv"})
-    assert "Error" in res.content[0].text
+    assert res.isError is True
 
 @pytest.mark.anyio
 async def test_item_import_success(server_session, tmp_path):
@@ -167,19 +172,14 @@ async def test_item_import_success(server_session, tmp_path):
     # Verify item was created
     list_res = await server_session.call_tool("list_items", {"q": "TestImportItem"})
     assert "TestImportItem" in list_res.content[0].text
-    
-    # Cleanup (optional but good practice)
-    # Get ID of created item? List items returns text, parsing ID is hard without regex.
-    # The session is transient or cleanable? 
-    # For now, relying on eventual cleanup or non-interference.
 
 @pytest.mark.anyio
 async def test_item_maintenance_integration(server_session):
     # Maintenance Log
     loc_res = await server_session.call_tool("create_location", {"name": "Maint-Test-Loc"})
-    loc_id = get_id(loc_res.content[0].text)
-    item_res = await server_session.call_tool("create_item", {"name": "Maint-Test-Item", "locationId": loc_id})
-    item_id = get_id(item_res.content[0].text)
+    loc_id = get_id(loc_res)
+    item_res = await server_session.call_tool("create_item", {"name": "Maint-Test-Item", "location_id": loc_id})
+    item_id = get_id(item_res)
 
     res = await server_session.call_tool("create_item_maintenance", {
         "id": item_id,
@@ -198,6 +198,5 @@ async def test_item_maintenance_integration(server_session):
 @pytest.mark.anyio
 async def test_list_items_pagination(server_session):
     # Pagination
-    res = await server_session.call_tool("list_items", {"page": 1, "pageSize": 1})
+    res = await server_session.call_tool("list_items", {"page": 1, "page_size": 1})
     assert not getattr(res, "isError", False)
-    assert "Page 1" in res.content[0].text

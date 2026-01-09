@@ -52,12 +52,12 @@ async def test_user_safety_switches_disabled_by_default():
             # Register should fail
             res = await session.call_tool("register_user", {"name": "Test", "email": "test@ex.com", "password": "Pass"})
             assert res.isError is True
-            assert "Safety Lock" in res.content[0].text
+            assert "is disabled via safety switch" in res.content[0].text
 
             # Delete should fail
             res = await session.call_tool("delete_user_self", {})
             assert res.isError is True
-            assert "Safety Lock" in res.content[0].text
+            assert "is disabled via safety switch" in res.content[0].text
 
 @pytest.mark.anyio
 async def test_full_user_protection():
@@ -75,11 +75,13 @@ async def test_full_user_protection():
         
         # Test Update (Should Fail)
         res = await session.call_tool("update_user_self", {"name": "New Name"})
-        assert getattr(res, "isError", False) or "disabled" in str(res.content).lower()
+        assert res.isError is True
+        assert "disabled" in res.content[0].text.lower()
 
         # Test Delete (Should Fail)
         res = await session.call_tool("delete_user_self", {})
-        assert getattr(res, "isError", False) or "disabled" in str(res.content).lower()
+        assert res.isError is True
+        assert "disabled" in res.content[0].text.lower()
 
 @pytest.mark.anyio
 async def test_non_deletable_user_protection():
@@ -101,11 +103,13 @@ async def test_non_deletable_user_protection():
         # Test Email Update (New Email) - Should Fail (Loophole Protection)
         new_email = f"new_{random_string()}@example.com"
         res = await session.call_tool("update_user_self", {"name": "UpdatedName", "email": new_email})
-        assert getattr(res, "isError", False) or "disabled" in str(res.content).lower()
+        assert res.isError is True
+        assert "disabled" in res.content[0].text.lower()
 
         # Test Delete (Should Fail)
         res = await session.call_tool("delete_user_self", {})
-        assert getattr(res, "isError", False) or "disabled" in str(res.content).lower()
+        assert res.isError is True
+        assert "disabled" in res.content[0].text.lower()
 
 @pytest.mark.anyio
 async def test_all_users_protected():
@@ -122,4 +126,5 @@ async def test_all_users_protected():
         
         # Test Update (Should Fail for 'all')
         res = await session.call_tool("update_user_self", {"name": "New"})
-        assert getattr(res, "isError", False) or "disabled" in str(res.content).lower()
+        assert res.isError is True
+        assert "disabled" in res.content[0].text.lower()

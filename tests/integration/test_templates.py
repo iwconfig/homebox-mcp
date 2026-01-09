@@ -1,9 +1,22 @@
 import pytest
 import re
 import uuid
+import json
 
-def get_id(text):
+def get_id(res):
+    if hasattr(res, "content"):
+        text = res.content[0].text
+    else:
+        text = res
+        
     if not text: return None
+    try:
+        data = json.loads(text)
+        if isinstance(data, dict):
+            return data.get("id")
+    except:
+        pass
+        
     m = re.search(r'"id":\s*"([a-f0-9\-]+)"', text)
     if m: return m.group(1)
     return None
@@ -13,12 +26,12 @@ async def test_template_lifecycle(server_session):
     # Setup
     t_name = f"Test-Template-{uuid.uuid4().hex[:6]}"
     loc_res = await server_session.call_tool("create_location", {"name": "Tmpl-Loc"})
-    loc_id = get_id(loc_res.content[0].text)
+    loc_id = get_id(loc_res)
 
     # Create Template
     res = await server_session.call_tool("create_template", {"name": t_name, "description": "Desc"})
     assert not getattr(res, "isError", False)
-    t_id = get_id(res.content[0].text)
+    t_id = get_id(res)
 
     # Get Template
     res = await server_session.call_tool("get_template", {"id": t_id})
@@ -32,10 +45,10 @@ async def test_template_lifecycle(server_session):
     res = await server_session.call_tool("create_item_from_template", {
         "id": t_id,
         "name": "Item-From-Template",
-        "locationId": loc_id
+        "location_id": loc_id
     })
     assert not getattr(res, "isError", False)
-    item_id = get_id(res.content[0].text)
+    item_id = get_id(res)
 
     # Cleanup
     await server_session.call_tool("delete_item", {"id": item_id})

@@ -1,87 +1,82 @@
-import json
-from ..client import HomeboxClient
+from typing import Annotated
+
 from fastmcp import FastMCP
 from fastmcp.utilities.types import Image
 
+from ..client import HomeboxClient
+
 # --- Tool Handlers ---
 
-async def handle_get_status(client: HomeboxClient) -> str:
-    """Get the status and version information of the Homebox instance."""
-    data = await client.request("GET", "status")
-    return json.dumps(data, indent=2)
+async def handle_get_status(client: HomeboxClient) -> dict:
+    """Get Homebox application status/info."""
+    return await client.request("GET", "status")
 
-async def handle_list_currencies(client: HomeboxClient) -> str:
-    """Retrieve all supported currencies from the backend."""
-    try:
-        data = await client.request("GET", "currencies")
-        return json.dumps(data, indent=2)
-    except Exception as e:
-        if "404" in str(e):
-            return "Currency information endpoint not found (404). This might not be supported in this Homebox version."
-        raise
+async def handle_list_currencies(client: HomeboxClient) -> list[dict]:
+    """Get all supported currencies."""
+    return await client.request("GET", "currencies")
 
 async def handle_create_qrcode(client: HomeboxClient, text: str) -> Image:
-    """Generate a QR code for the provided text. Returns a native Image."""
+    """Create QR Code for a string."""
     data = await client.request("GET", "qrcode", params={"data": text}, return_bytes=True)
     return Image(data=data, format="png")
 
-async def handle_search_product_by_barcode(client: HomeboxClient, barcode: str) -> str:
-    """Look up product information using an EAN/Barcode."""
-    try:
-        # Note: Backend expects 'productEAN' despite some documentation saying 'data'
-        data = await client.request("GET", "products/search-from-barcode", params={"productEAN": barcode})
-        return json.dumps(data, indent=2)
-    except Exception as e:
-        return f"Error searching product by barcode: {str(e)}"
+async def handle_search_product_by_barcode(client: HomeboxClient, barcode: str) -> list[dict] | None:
+    """Search EAN from Barcode."""
+    # Homebox specifically decodes 'productEAN' from query params
+    return await client.request("GET", "products/search-from-barcode", params={"productEAN": barcode})
 
-async def handle_get_label_image(client: HomeboxClient, type: str, id: str, print_label: bool = False) -> Image:
-    """
-    Generate a printable label for an item, asset, or location.
-    Returns a native Image.
-    """
-    if type not in ["item", "asset", "location"]:
-        raise ValueError("Error: Type must be 'item', 'asset', or 'location'")
-    
-    path = ""
-    if type == "asset":
-        path = f"labelmaker/assets/{id}"
-    elif type == "item":
-        path = f"labelmaker/item/{id}"
-    elif type == "location":
-        path = f"labelmaker/location/{id}"
-        
+async def handle_get_label_image(client: HomeboxClient, id: str, type: str, print_label: bool = False) -> Image:
+    """Get Label Image. Type must be one of: 'item', 'asset', 'location'."""
     params = {"print": str(print_label).lower()}
-    data = await client.request("GET", path, params=params, return_bytes=True)
-    
+
+    # Map high-level types to the API paths
+    api_type = type
+    if type == "item":
+        api_type = "item"
+    elif type == "asset":
+        api_type = "assets"
+    elif type == "location":
+        api_type = "location"
+    else:
+        raise ValueError(f"Invalid label type: {type}. Must be 'item', 'asset', or 'location'.")
+
+    data = await client.request("GET", f"labelmaker/{api_type}/{id}", params=params, return_bytes=True)
     return Image(data=data, format="png")
 
 # --- Registration ---
 
 def register_misc_tools(mcp: FastMCP, client: HomeboxClient):
-    @mcp.tool()
-    async def get_status() -> str:
+    @mcp.tool(output_schema={"type": "object"})
+    async def get_status() -> dict:
         """Get Homebox application status/info"""
         return await handle_get_status(client)
 
-    @mcp.tool()
-    async def list_currencies() -> str:
+    @mcp.tool(output_schema={"type": "object"})
+    async def list_currencies() -> dict:
         """Get all supported currencies"""
-        return await handle_list_currencies(client)
+        res = await handle_list_currencies(client)
+        return {"currencies": res}
 
     @mcp.tool()
-    async def create_qrcode(text: str) -> Image:
+    async def create_qrcode(
+        text: Annotated[str, "Text to encode in the QR code"]
+    ) -> Image:
         """Create QR Code for a string"""
-        return await handle_create_qrcode(client, text)
+        return await handle_create_qrcode(client, text=text)
 
-    @mcp.tool()
-    async def search_product_by_barcode(barcode: str) -> str:
+    @mcp.tool(output_schema={"type": "object"})
+    async def search_product_by_barcode(
+        barcode: Annotated[str, "The barcode (EAN) to search for"]
+    ) -> dict:
         """Search EAN from Barcode"""
-        return await handle_search_product_by_barcode(client, barcode)
+        res = await handle_search_product_by_barcode(client, barcode=barcode)
+        return {"products": res}
 
     @mcp.tool()
-    async def get_label_image(type: str, id: str, print_label: bool = False) -> Image:
-        """
-        Get Label Image.
-        Type must be one of: 'item', 'asset', 'location'.
-        """
-        return await handle_get_label_image(client, type, id, print_label)
+    async def get_label_image(
+        id: Annotated[str, "ID of the item, asset, or location"],
+        type: Annotated[str, "Type of label: 'item', 'asset', or 'location'"],
+        print_label: Annotated[bool, "Whether to optimize for printing"] = False
+    ) -> Image:
+        """Get Label Image"""
+        return await handle_get_label_image(client, id=id, type=type, print_label=print_label)

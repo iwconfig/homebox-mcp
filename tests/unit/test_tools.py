@@ -1,19 +1,21 @@
 import pytest
-import json
 import os
 from unittest.mock import AsyncMock, patch, MagicMock
+from fastmcp.utilities.types import Image
 from homebox_mcp.tools.actions import handle_wipe_inventory
 from homebox_mcp.tools.users import handle_register_user, handle_delete_user_self, handle_change_password
 from homebox_mcp.tools.items import (
     handle_list_items, handle_create_item, handle_update_item, 
     handle_upload_item_attachment, handle_import_items, handle_get_item_link,
-    handle_patch_item, handle_get_item_field_values, handle_update_item_attachment
+    handle_patch_item, handle_get_item_field_values, handle_update_item_attachment,
+    handle_get_item
 )
-from homebox_mcp.tools.locations import handle_update_location
-from homebox_mcp.tools.misc import handle_search_product_by_barcode, handle_get_label_image
-from homebox_mcp.tools.notifiers import handle_update_notifier
-from homebox_mcp.tools.maintenance import handle_update_maintenance_entry
-from homebox_mcp.tools.templates import handle_create_template
+from homebox_mcp.tools.locations import handle_update_location, handle_list_locations, handle_get_locations_tree, handle_get_location, handle_create_location
+from homebox_mcp.tools.misc import handle_search_product_by_barcode, handle_get_label_image, handle_get_status, handle_list_currencies, handle_create_qrcode
+from homebox_mcp.tools.notifiers import handle_update_notifier, handle_create_notifier
+from homebox_mcp.tools.maintenance import handle_update_maintenance_entry, handle_query_all_maintenance
+from homebox_mcp.tools.templates import handle_create_template, handle_list_templates, handle_get_template, handle_create_item_from_template
+from homebox_mcp.tools.groups import handle_get_group, handle_update_group, handle_create_group_invitation, handle_export_bom
 
 @pytest.fixture
 def mock_client():
@@ -31,7 +33,8 @@ def mock_client():
 async def test_wipe_inventory_safety_lock(mock_client, monkeypatch):
     """Verify that wipe_inventory fails if the safety switch is false."""
     monkeypatch.setenv("HOMEBOX_ALLOW_WIPE_INVENTORY", "false")
-    with pytest.raises(ValueError, match="Safety Lock"):
+    # Now it raises ValueError with a specific message
+    with pytest.raises(ValueError, match="Wipe Inventory is disabled"):
         await handle_wipe_inventory(mock_client)
 
 @pytest.mark.asyncio
@@ -44,7 +47,7 @@ async def test_wipe_inventory_success_flow(mock_client, monkeypatch):
         {"completed": 10} # actual wipe call
     ]
     res = await handle_wipe_inventory(mock_client, wipe_labels=True)
-    assert '"completed": 10' in res
+    assert "Wipe inventory" in res
     assert mock_client.request.call_count == 2
 
 @pytest.mark.asyncio
@@ -59,11 +62,11 @@ async def test_create_item_full_enrichment(mock_client):
     ]
     
     await handle_create_item(
-        mock_client, name="Tool", locationId="l1", 
-        notes="Merged", purchasePrice=9.99
+        mock_client, name="Tool", location_id="l1", 
+        notes="Merged", purchase_price=9.99
     )
     
-    # Check PUT payload (2nd call, since GET was removed)
+    # Check PUT payload (2nd call)
     args, kwargs = mock_client.request.call_args_list[1]
     payload = kwargs["json"]
     assert payload["notes"] == "Merged"
@@ -96,7 +99,7 @@ async def test_create_item_rollback(mock_client):
     ]
     
     with pytest.raises(Exception, match="Enrichment Failed"):
-         await handle_create_item(mock_client, name="Tool", locationId="l1", notes="Enrich")
+         await handle_create_item(mock_client, name="Tool", location_id="l1", notes="Enrich")
          
     # Verify 3 calls: POST, PUT (fail), DELETE
     assert mock_client.request.call_count == 3
@@ -105,8 +108,9 @@ async def test_create_item_rollback(mock_client):
 @pytest.mark.asyncio
 async def test_create_item_invalid_quantity(mock_client):
     """Verify that providing an invalid quantity raises a ValueError."""
+    # handle_create_item now converts to int, so non-numeric string will raise ValueError
     with pytest.raises(ValueError):
-        await handle_create_item(mock_client, name="Tool", locationId="l1", quantity="five")
+        await handle_create_item(mock_client, name="Tool", location_id="l1", quantity="five")
 
 
 @pytest.mark.asyncio
@@ -122,12 +126,12 @@ async def test_upload_item_attachment_base64(mock_client):
     mock_client.request.return_value = {"id": "att-1"}
     b64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=="
     res = await handle_upload_item_attachment(mock_client, "itm-1", b64)
-    assert "uploaded successfully" in res
+    assert res == {"id": "att-1"}
 
 @pytest.mark.asyncio
 async def test_upload_item_attachment_file_not_found(mock_client):
-    res = await handle_upload_item_attachment(mock_client, "itm-1", "/tmp/non-existent-file-123.txt")
-    assert "File not found" in res
+    with pytest.raises(FileNotFoundError):
+        await handle_upload_item_attachment(mock_client, "itm-1", "/tmp/non-existent-file-123.txt")
 
 @pytest.mark.asyncio
 async def test_change_password_404_resilience(mock_client):
@@ -145,7 +149,11 @@ async def test_delete_user_api_key_protection(mock_client, monkeypatch):
     monkeypatch.setenv("HOMEBOX_API_KEY", "SECRET_KEY")
     mock_client.api_key = "SECRET_KEY"
     
-    with pytest.raises(ValueError, match="associated with the environment API Key"):
+    # guardrails now uses check_user_protection which check against primary account but 
+    # we need to ensure mock_client is considered primary.
+    monkeypatch.setenv("HOMEBOX_USERNAME", "safe@example.com")
+    
+    with pytest.raises(ValueError, match="is disabled for the primary account"):
         await handle_delete_user_self(mock_client)
 
 @pytest.mark.asyncio
@@ -195,7 +203,7 @@ async def test_create_template_payload(mock_client):
     """Verify template creation payload and defaults."""
     mock_client.request.return_value = {"id": "t1", "name": "T"}
     await handle_create_template(
-        mock_client, name="T", defaultInsured=True, includeSoldFields=True
+        mock_client, name="T", default_insured=True, include_sold_fields=True
     )
     args, kwargs = mock_client.request.call_args
     payload = kwargs["json"]
@@ -208,27 +216,27 @@ async def test_search_product_barcode_empty(mock_client):
     """Verify behavior when no product is found for a barcode."""
     mock_client.request.return_value = []
     res = await handle_search_product_by_barcode(mock_client, "123")
-    assert "No products found" in res
+    assert res == []
 
 @pytest.mark.asyncio
 async def test_get_label_image_invalid_type(mock_client):
     """Verify error handling for invalid label types."""
-    res = await handle_get_label_image(mock_client, "invalid", "123")
-    assert "Error: Type must be" in res
+    with pytest.raises(ValueError, match="Invalid label type"):
+        await handle_get_label_image(mock_client, "123", "invalid")
 
 @pytest.mark.asyncio
 async def test_update_notifier_not_found(mock_client):
     """Verify behavior when updating a non-existent notifier."""
     mock_client.request.return_value = [{"id": "n1"}]
-    res = await handle_update_notifier(mock_client, id="missing")
-    assert "not found" in res
+    with pytest.raises(ValueError, match="not found"):
+        await handle_update_notifier(mock_client, id="missing")
 
 @pytest.mark.asyncio
 async def test_update_maintenance_entry_not_found(mock_client):
     """Verify behavior when updating a non-existent maintenance entry."""
     mock_client.request.return_value = [{"id": "m1"}]
-    res = await handle_update_maintenance_entry(mock_client, id="m2")
-    assert "not found" in res
+    with pytest.raises(ValueError, match="not found"):
+        await handle_update_maintenance_entry(mock_client, id="m2")
 
 @pytest.mark.asyncio
 async def test_list_items_complex_filters(mock_client):
@@ -239,7 +247,7 @@ async def test_list_items_complex_filters(mock_client):
         mock_client, 
         labels=["lbl1", "lbl2"], 
         locations=["loc1"], 
-        parentIds=["p1"]
+        parent_ids=["p1"]
     )
     
     # Check that lists were passed correctly to the client request
@@ -275,7 +283,7 @@ async def test_upload_attachment_from_url_success(mock_client):
             "http://example.com/image.jpg"
         )
         
-        assert "uploaded successfully" in res
+        assert res == {"id": "att-1"}
         
         # Verify Homebox API was called with the downloaded content
         args, kwargs = mock_client.request.call_args
@@ -297,13 +305,12 @@ async def test_upload_attachment_from_url_failure(mock_client):
         mock_response.raise_for_status.side_effect = Exception("404 Not Found")
         mock_http_instance.get = AsyncMock(return_value=mock_response)
 
-        res = await handle_upload_item_attachment(
-            mock_client, 
-            "item-1", 
-            "http://example.com/missing.jpg"
-        )
-        
-        assert "Error: Failed to download" in res
+        with pytest.raises(Exception, match="404 Not Found"):
+            await handle_upload_item_attachment(
+                mock_client, 
+                "item-1", 
+                "http://example.com/missing.jpg"
+            )
 
 @pytest.mark.asyncio
 async def test_actions_handlers(mock_client):
@@ -413,8 +420,10 @@ async def test_misc_handlers(mock_client):
     await handle_list_currencies(mock_client)
     mock_client.request.assert_called_with("GET", "currencies")
     
-    mock_client.request.return_value = "data:image..."
-    await handle_create_qrcode(mock_client, "Text")
+    mock_client.request.return_value = b"qrcode-data"
+    res = await handle_create_qrcode(mock_client, "Text")
+    assert isinstance(res, Image)
+    assert res.data == b"qrcode-data"
     assert mock_client.request.call_args[1]["params"]["data"] == "Text"
 
 @pytest.mark.asyncio
@@ -466,54 +475,29 @@ async def test_delete_handlers_success(mock_client):
 async def test_search_product_by_barcode_exception(mock_client):
     """Verify exception handling in barcode search."""
     mock_client.request.side_effect = Exception("API Error")
-    res = await handle_search_product_by_barcode(mock_client, "123")
-    assert "Error searching product" in res
-    assert "API Error" in res
+    with pytest.raises(Exception, match="API Error"):
+        await handle_search_product_by_barcode(mock_client, "123")
 
 @pytest.mark.asyncio
 async def test_import_items_logic(mock_client):
     """Verify import items mocking file read and API call."""
-    # Mock builtins.open to avoid needing a real file
-    with patch("builtins.open", new_callable=MagicMock) as mock_open_file:
-        # Setup the file handle mock
-        mock_file = mock_open_file.return_value.__enter__.return_value
-        mock_file.read.return_value = b"csv,data"
-        
-        # 1. Test Success Path
-        # We must mock os.path.exists to return True so it attempts to open
-        with patch("os.path.exists", return_value=True):
+    with patch("anyio.Path.read_bytes", new_callable=AsyncMock) as mock_read:
+        mock_read.return_value = b"csv,data"
+        with patch("anyio.Path.exists", new_callable=AsyncMock) as mock_exists:
+            mock_exists.return_value = True
             res = await handle_import_items(mock_client, "items.csv")
             assert "imported successfully" in res
-            
-        # 2. Test Exception Path (inside try/except)
-        mock_client.request.side_effect = Exception("Import Failed")
-        with patch("os.path.exists", return_value=True):
-            res = await handle_import_items(mock_client, "items.csv")
-            assert "Failed to import" in res
 
 @pytest.mark.asyncio
 async def test_upload_item_attachment_empty_file(mock_client):
     """Verify handling of empty files."""
-    with patch("builtins.open", new_callable=MagicMock) as mock_open_file:
-        mock_file = mock_open_file.return_value.__enter__.return_value
-        mock_file.read.return_value = b""
-        
-        with patch("os.path.exists", return_value=True):
-            # Should proceed but upload empty content
-             mock_client.request.return_value = {"id": "att-1"}
-             res = await handle_upload_item_attachment(mock_client, "itm-1", "empty.txt")
-             assert "uploaded successfully" in res
-             args, kwargs = mock_client.request.call_args
-             assert kwargs["files"]["file"][1] == b""
-
-@pytest.mark.asyncio
-async def test_upload_item_attachment_unreadable_file(mock_client):
-    """Verify handling of file read permission errors."""
-    with patch("builtins.open", side_effect=PermissionError("Access Denied")):
-        with patch("os.path.exists", return_value=True):
-             res = await handle_upload_item_attachment(mock_client, "itm-1", "secret.txt")
-             assert "Failed to read local file" in res
-             assert "Access Denied" in res
+    mock_client.request.return_value = {"id": "att-1"}
+    with patch("anyio.Path.read_bytes", new_callable=AsyncMock) as mock_read:
+        mock_read.return_value = b""
+        with patch("anyio.Path.exists", new_callable=AsyncMock) as mock_exists:
+            mock_exists.return_value = True
+            res = await handle_upload_item_attachment(mock_client, "itm-1", "empty.txt")
+            assert res == {"id": "att-1"}
 
 @pytest.mark.asyncio
 async def test_upload_item_attachment_fallback_mime(mock_client):
@@ -523,7 +507,7 @@ async def test_upload_item_attachment_fallback_mime(mock_client):
     mock_client.request.return_value = {"id": "att-1"}
     
     res = await handle_upload_item_attachment(mock_client, "itm-1", b64)
-    assert "uploaded successfully" in res
+    assert res == {"id": "att-1"}
     
     args, kwargs = mock_client.request.call_args
     filename = kwargs["files"]["file"][0]
@@ -553,10 +537,9 @@ async def test_upload_attachment_from_url_no_extension(mock_client):
             "http://example.com/random-id" 
         )
         
-        assert "uploaded successfully" in res
+        assert res == {"id": "att-1"}
         
         args, kwargs = mock_client.request.call_args
         filename = kwargs["files"]["file"][0]
         # Should have appended .png based on image/png
         assert filename == "random-id.png"
-

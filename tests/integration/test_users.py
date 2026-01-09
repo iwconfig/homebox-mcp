@@ -78,4 +78,3 @@ async def test_user_lifecycle():
         # 7. Logout (reverts to default user)
         res = await server_session.call_tool("logout_user", {})
         assert not getattr(res, "isError", False)
-

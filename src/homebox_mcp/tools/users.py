@@ -1,112 +1,102 @@
-import json
 import os
-from ..client import HomeboxClient
-from ..guardrails import protect_resource, check_user_protection
+from typing import Annotated
+
 from fastmcp import FastMCP
+
+from ..client import HomeboxClient
+from ..guardrails import protect_user_self
 
 # --- Tool Handlers ---
 
-async def handle_get_user_self(client: HomeboxClient) -> str:
-    """Get current user information."""
-    data = await client.request("GET", "users/self")
-    return json.dumps(data, indent=2)
+async def handle_get_user_self(client: HomeboxClient) -> dict:
+    """Get current user info."""
+    return await client.request("GET", "users/self")
 
-@protect_resource(resource_type="users", action="update")
-async def handle_update_user_self(client: HomeboxClient, name: str | None = None, email: str | None = None) -> str:
-    """Update current user's profile metadata."""
-    current_user = await client.request("GET", "users/self")
-    user_item = current_user.get("item", {})
-    
-    # Check if the account is protected from modifications
-    check_user_protection(user_item, "update_user")
-    
-    # Check if we are changing the email (which is a form of deletion protection)
-    if email and email != user_item.get("email"):
-        check_user_protection(user_item, "change_email")
-        
+@protect_user_self(action_desc="update_user")
+async def handle_update_user_self(client: HomeboxClient, name: str | None = None, email: str | None = None) -> dict:
+    """Update current user account."""
+    existing_res = await client.request("GET", "users/self")
+    existing = existing_res.get("item", {})
     payload = {
-        "name": name or user_item.get("name"),
-        "email": email or user_item.get("email")
+        "name": name or existing.get("name", ""),
+        "email": email or existing.get("email", "")
     }
-    
-    data = await client.request("PUT", "users/self", json=payload)
-    return f"Updated User: {json.dumps(data, indent=2)}"
+    return await client.request("PUT", "users/self", json=payload)
 
-@protect_resource(resource_type="users", action="update")
+@protect_user_self(action_desc="change_password")
 async def handle_change_password(client: HomeboxClient, current: str, new: str) -> str:
-    """Change current user's password."""
-    current_user = await client.request("GET", "users/self")
-    check_user_protection(current_user.get("item", {}), "change_password")
-    
+    """Change current user password."""
+    payload = {"current": current, "new": new}
     try:
-        await client.request("PUT", "users/change-password", json={"current": current, "new": new})
+        await client.request("PUT", "users/change-password", json=payload)
         return "Password changed successfully"
     except Exception as e:
         if "404" in str(e):
-            return "Change password endpoint not found (404). This might not be supported in this Homebox version."
-        raise
+            return "Error: Password change endpoint might not be supported in this Homebox version."
+        raise e
 
-@protect_resource(resource_type="users", action="create")
-async def handle_register_user(client: HomeboxClient, name: str, email: str, password: str) -> str:
-    """Register a new user account."""
-    if os.getenv("HOMEBOX_ALLOW_USER_REGISTRATION", "").lower() != "true":
-        raise ValueError("Safety Lock: 'register_user' is disabled by default. Set HOMEBOX_ALLOW_USER_REGISTRATION=true to enable.")
-        
-    await client.request("POST", "users/register", json={"name": name, "email": email, "password": password})
-    return "User registered successfully"
+async def handle_register_user(client: HomeboxClient, name: str, email: str, password: str) -> dict | None:
+    """Register New User."""
+    if os.getenv("HOMEBOX_ALLOW_USER_REGISTRATION", "false").lower() != "true":
+        raise ValueError("User registration is disabled via safety switch (HOMEBOX_ALLOW_USER_REGISTRATION).")
+
+    payload = {"name": name, "email": email, "password": password}
+    return await client.request("POST", "users/register", json=payload)
 
 async def handle_login_user(client: HomeboxClient, username: str, password: str) -> str:
-    """Manually switch the authenticated user session."""
+    """Log in as a different user."""
     await client.login_manual(username, password)
     return f"Logged in as {username}"
 
 async def handle_logout_user(client: HomeboxClient) -> str:
-    """Logout and revert to the default environment credentials."""
+    """Logout and revert to default user."""
     client.logout()
-    return "Logged out. Reverted to default credentials."
+    return "Logged out successfully"
 
-@protect_resource(resource_type="users", action="delete")
+@protect_user_self(action_desc="delete_user")
 async def handle_delete_user_self(client: HomeboxClient) -> str:
-    """Permanently delete the current user's account."""
-    if os.getenv("HOMEBOX_ALLOW_USER_DELETION", "").lower() != "true":
-        raise ValueError("Safety Lock: 'delete_user_self' is disabled by default. Set HOMEBOX_ALLOW_USER_DELETION=true to enable.")
-        
-    current_user = await client.request("GET", "users/self")
-    check_user_protection(current_user.get("item", {}), "delete_user")
-    
-    # Prevent deletion if the user is the one associated with the master API Key
-    if os.getenv("HOMEBOX_API_KEY") and client.api_key == os.getenv("HOMEBOX_API_KEY"):
-         raise ValueError("Cannot delete the user associated with the environment API Key.")
-         
+    """Delete Account."""
     await client.request("DELETE", "users/self")
-    client.logout()
-    return "Account deleted successfully. Logged out."
+    return "Account deleted successfully"
 
 # --- Registration ---
 
 def register_users_tools(mcp: FastMCP, client: HomeboxClient):
-    @mcp.tool()
-    async def get_user_self() -> str:
+    @mcp.tool(output_schema={"type": "object"})
+    async def get_user_self() -> dict:
         """Get current user info"""
         return await handle_get_user_self(client)
 
-    @mcp.tool()
-    async def update_user_self(name: str | None = None, email: str | None = None) -> str:
+    @mcp.tool(output_schema={"type": "object"})
+    async def update_user_self(
+        name: Annotated[str | None, "New name for the user"] = None,
+        email: Annotated[str | None, "New email address for the user"] = None
+    ) -> dict:
         """Update current user account"""
-        return await handle_update_user_self(client, name, email)
+        return await handle_update_user_self(client, name=name, email=email)
 
     @mcp.tool()
-    async def change_password(current: str, new: str) -> str:
+    async def change_password(
+        current: Annotated[str, "Current password"],
+        new: Annotated[str, "New password"]
+    ) -> str:
         """Change current user password"""
-        return await handle_change_password(client, current, new)
+        return await handle_change_password(client, current=current, new=new)
 
     @mcp.tool()
-    async def register_user(name: str, email: str, password: str) -> str:
+    async def register_user(
+        name: Annotated[str, "Name for the new user"],
+        email: Annotated[str, "Email address for the new user"],
+        password: Annotated[str, "Password for the new user"]
+    ) -> dict | None:
         """Register New User"""
-        return await handle_register_user(client, name, email, password)
+        return await handle_register_user(client, name=name, email=email, password=password)
 
     @mcp.tool()
-    async def login_user(username: str, password: str) -> str:
+    async def login_user(
+        username: Annotated[str, "Username or email"],
+        password: Annotated[str, "Password"]
+    ) -> str:
         """Log in as a different user"""
         return await handle_login_user(client, username, password)
 

@@ -1,9 +1,22 @@
 import pytest
 import re
 import uuid
+import json
 
-def get_id(text):
+def get_id(res):
+    if hasattr(res, "content"):
+        text = res.content[0].text
+    else:
+        text = res
+        
     if not text: return None
+    try:
+        data = json.loads(text)
+        if isinstance(data, dict):
+            return data.get("id")
+    except:
+        pass
+        
     m = re.search(r'"id":\s*"([a-f0-9\-]+)"', text)
     if m: return m.group(1)
     return None
@@ -20,10 +33,10 @@ async def test_notifier_lifecycle(server_session, local_http_server):
         "url": webhook_url
     })
     assert not getattr(res, "isError", False)
-    n_id = get_id(res.content[0].text)
+    n_id = get_id(res)
 
     # Update Notifier
-    res = await server_session.call_tool("update_notifier", {"id": n_id, "isActive": False})
+    res = await server_session.call_tool("update_notifier", {"id": n_id, "is_active": False})
     assert not getattr(res, "isError", False)
 
     # Test Notifier Signal

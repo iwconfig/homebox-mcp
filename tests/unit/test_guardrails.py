@@ -43,14 +43,14 @@ def test_check_user_protection_lists(monkeypatch):
     monkeypatch.setenv("HOMEBOX_NON_DELETABLE_USERS", "keep@ex.com")
     
     # 1. Protected User - Block Update
-    with pytest.raises(ValueError, match="disabled for user 'prot@ex.com'"):
+    with pytest.raises(ValueError, match="is disabled for user 'prot@ex.com' via HOMEBOX_PROTECTED_USERS"):
         check_user_protection({"email": "prot@ex.com", "id": "u1"}, "update_user")
         
     # 2. Non-Deletable User - Allow Update
     check_user_protection({"email": "keep@ex.com", "id": "u2"}, "update_user")
     
     # 3. Non-Deletable User - Block Delete
-    with pytest.raises(ValueError, match="disabled for user 'keep@ex.com'"):
+    with pytest.raises(ValueError, match="is disabled for user 'keep@ex.com' via HOMEBOX_NON_DELETABLE_USERS"):
         check_user_protection({"email": "keep@ex.com", "id": "u2"}, "delete_user")
 
 def test_user_protection_caching(monkeypatch):
@@ -66,7 +66,7 @@ def test_user_protection_caching(monkeypatch):
     
     # Email changed, but ID remains in cache
     changed_user = {"email": "new@ex.com", "id": "uuid-999"}
-    with pytest.raises(ValueError, match="matched via HOMEBOX_PROTECTED_USERS previously"):
+    with pytest.raises(ValueError, match="disabled for protected user ID 'uuid-999'"):
         check_user_protection(changed_user, "update_user")
 
 def test_user_protection_all_keyword(monkeypatch):

@@ -1,10 +1,12 @@
-from ..client import HomeboxClient
 from fastmcp import FastMCP
+
+from ..client import HomeboxClient
+
 
 def register_all_tools(mcp: FastMCP, client: HomeboxClient):
     # Import modules and pass the mcp and client to them
-    from . import items, locations, labels, groups, misc, notifiers, actions, templates, users, maintenance, images
-    
+    from . import actions, groups, images, items, labels, locations, maintenance, misc, notifiers, templates, users
+
     items.register_items_tools(mcp, client)
     locations.register_locations_tools(mcp, client)
     labels.register_labels_tools(mcp, client)

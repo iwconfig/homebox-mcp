@@ -1,10 +1,21 @@
 import pytest
 import re
-import uuid
 import json
 
-def get_id(text):
+def get_id(res):
+    if hasattr(res, "content"):
+        text = res.content[0].text
+    else:
+        text = res
+        
     if not text: return None
+    try:
+        data = json.loads(text)
+        if isinstance(data, dict):
+            return data.get("id")
+    except:
+        pass
+        
     m = re.search(r'"id":\s*"([a-f0-9\-]+)"', text)
     if m: return m.group(1)
     return None
@@ -13,9 +24,9 @@ def get_id(text):
 async def test_maintenance_lifecycle(server_session):
     # Setup
     loc_res = await server_session.call_tool("create_location", {"name": "Maint-Loc"})
-    loc_id = get_id(loc_res.content[0].text)
-    item_res = await server_session.call_tool("create_item", {"name": "Maint-Item", "locationId": loc_id})
-    item_id = get_id(item_res.content[0].text)
+    loc_id = get_id(loc_res)
+    item_res = await server_session.call_tool("create_item", {"name": "Maint-Item", "location_id": loc_id})
+    item_id = get_id(item_res)
 
     # 1. Create maintenance
     res = await server_session.call_tool("create_item_maintenance", {
@@ -25,7 +36,7 @@ async def test_maintenance_lifecycle(server_session):
     })
     assert not getattr(res, "isError", False)
     
-    m_id = get_id(res.content[0].text)
+    m_id = get_id(res)
     if m_id:
         # 2. Get item maintenance
         res = await server_session.call_tool("get_item_maintenance", {"id": item_id})
@@ -48,8 +59,6 @@ async def test_maintenance_lifecycle(server_session):
         # 5. Delete maintenance entry
         res = await server_session.call_tool("delete_maintenance_entry", {"id": m_id})
         assert not getattr(res, "isError", False)
-    else:
-        print(f"Skipping maintenance detail tests as creation failed: {res.content[0].text}")
 
     # Cleanup
     await server_session.call_tool("delete_item", {"id": item_id})

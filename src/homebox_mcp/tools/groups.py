@@ -1,59 +1,58 @@
-import json
-from ..client import HomeboxClient
+from typing import Annotated
+
 from fastmcp import FastMCP
+
+from ..client import HomeboxClient
 
 # --- Tool Handlers ---
 
-async def handle_get_group(client: HomeboxClient) -> str:
+async def handle_get_group(client: HomeboxClient) -> dict:
     """Get current group information."""
-    data = await client.request("GET", "groups")
-    return json.dumps(data, indent=2)
+    return await client.request("GET", "groups")
 
-async def handle_update_group(client: HomeboxClient, name: str | None = None, currency: str | None = None) -> str:
+async def handle_update_group(client: HomeboxClient, name: str | None = None, currency: str | None = None) -> dict:
     """Update current group name or currency."""
     payload = {}
     if name:
         payload["name"] = name
     if currency:
         payload["currency"] = currency
-        
-    data = await client.request("PUT", "groups", json=payload)
-    return f"Updated Group: {json.dumps(data, indent=2)}"
 
-async def handle_create_group_invitation(client: HomeboxClient, uses: int = 1, expiresAt: str | None = None) -> str:
+    return await client.request("PUT", "groups", json=payload)
+
+async def handle_create_group_invitation(client: HomeboxClient, uses: int = 1, expires_at: str | None = None) -> dict:
     """Create a new invitation for the group."""
     payload = {"uses": uses}
-    if expiresAt:
-        payload["expiresAt"] = expiresAt
-        
-    data = await client.request("POST", "groups/invitations", json=payload)
-    return f"Created Invitation: {json.dumps(data, indent=2)}"
+    if expires_at:
+        payload["expiresAt"] = expires_at
 
-async def handle_get_group_statistics(client: HomeboxClient) -> str:
+    return await client.request("POST", "groups/invitations", json=payload)
+
+async def handle_get_group_statistics(client: HomeboxClient) -> dict:
     """Get overall group statistics."""
-    data = await client.request("GET", "groups/statistics")
-    return json.dumps(data, indent=2)
+    return await client.request("GET", "groups/statistics")
 
-async def handle_get_label_statistics(client: HomeboxClient) -> str:
+async def handle_get_label_statistics(client: HomeboxClient) -> dict:
     """Get item counts and values per label."""
-    data = await client.request("GET", "groups/statistics/labels")
-    return json.dumps(data, indent=2)
+    return await client.request("GET", "groups/statistics/labels")
 
-async def handle_get_location_statistics(client: HomeboxClient) -> str:
+async def handle_get_location_statistics(client: HomeboxClient) -> dict:
     """Get item counts and values per location."""
-    data = await client.request("GET", "groups/statistics/locations")
-    return json.dumps(data, indent=2)
+    return await client.request("GET", "groups/statistics/locations")
 
-async def handle_get_purchase_price_statistics(client: HomeboxClient, start: str | None = None, end: str | None = None) -> str:
+async def handle_get_purchase_price_statistics(
+    client: HomeboxClient,
+    start: str | None = None,
+    end: str | None = None
+) -> dict:
     """Get purchase price history within a date range."""
     params = {}
     if start:
         params["start"] = start
     if end:
         params["end"] = end
-        
-    data = await client.request("GET", "groups/statistics/purchase-price", params=params)
-    return json.dumps(data, indent=2)
+
+    return await client.request("GET", "groups/statistics/purchase-price", params=params)
 
 async def handle_export_bom(client: HomeboxClient) -> str:
     """Export the Bill of Materials."""
@@ -63,40 +62,52 @@ async def handle_export_bom(client: HomeboxClient) -> str:
 # --- Registration ---
 
 def register_groups_tools(mcp: FastMCP, client: HomeboxClient):
-    @mcp.tool()
-    async def get_group() -> str:
+    @mcp.tool(output_schema={"type": "object"})
+    async def get_group() -> dict:
         """Get Group Info"""
         return await handle_get_group(client)
 
-    @mcp.tool()
-    async def update_group(name: str | None = None, currency: str | None = None) -> str:
+    @mcp.tool(output_schema={"type": "object"})
+    async def update_group(
+        name: Annotated[str | None, "New name for the group"] = None,
+        currency: Annotated[str | None, "New currency code (e.g. USD, EUR)"] = None
+    ) -> dict:
         """Update Group Info"""
-        return await handle_update_group(client, name, currency)
+        return await handle_update_group(client, name=name, currency=currency)
 
-    @mcp.tool()
-    async def create_group_invitation(uses: int = 1, expiresAt: str | None = None) -> str:
+    @mcp.tool(output_schema={"type": "object"})
+    async def create_group_invitation(
+        uses: Annotated[int, "Number of times the invitation can be used"] = 1,
+        expires_at: Annotated[str | None, "ISO 8601 date when invitation expires"] = None
+    ) -> dict:
         """Create Group Invitation"""
-        return await handle_create_group_invitation(client, uses, expiresAt)
+        return await handle_create_group_invitation(client, uses=uses, expires_at=expires_at)
 
-    @mcp.tool()
-    async def get_group_statistics() -> str:
+    @mcp.tool(output_schema={"type": "object"})
+    async def get_group_statistics() -> dict:
         """Get Group Statistics"""
         return await handle_get_group_statistics(client)
 
-    @mcp.tool()
-    async def get_label_statistics() -> str:
+    @mcp.tool(output_schema={"type": "object"})
+    async def get_label_statistics() -> dict:
         """Get Label Statistics"""
-        return await handle_get_label_statistics(client)
+        res = await handle_get_label_statistics(client)
+        return {"labels": res}
 
-    @mcp.tool()
-    async def get_location_statistics() -> str:
+    @mcp.tool(output_schema={"type": "object"})
+    async def get_location_statistics() -> dict:
         """Get Location Statistics"""
-        return await handle_get_location_statistics(client)
+        res = await handle_get_location_statistics(client)
+        return {"locations": res}
 
-    @mcp.tool()
-    async def get_purchase_price_statistics(start: str | None = None, end: str | None = None) -> str:
+    @mcp.tool(output_schema={"type": "object"})
+    async def get_purchase_price_statistics(
+        start: Annotated[str | None, "Start date (ISO 8601)"] = None,
+        end: Annotated[str | None, "End date (ISO 8601)"] = None
+    ) -> dict:
         """Get Purchase Price Statistics"""
-        return await handle_get_purchase_price_statistics(client, start, end)
+        res = await handle_get_purchase_price_statistics(client, start=start, end=end)
+        return {"statistics": res}
 
     @mcp.tool()
     async def export_bom() -> str:

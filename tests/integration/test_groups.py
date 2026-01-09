@@ -1,5 +1,4 @@
 import pytest
-import re
 
 @pytest.mark.anyio
 async def test_group_tools(server_session):
