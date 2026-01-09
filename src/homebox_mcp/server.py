@@ -38,15 +38,10 @@ register_all_prompts(mcp)
 def main():
     """Main entry point for the homebox-mcp server."""
     transport = os.getenv("MCP_TRANSPORT", "stdio").lower()
-    host = os.getenv("MCP_HOST", "0.0.0.0")
-    port = int(os.getenv("MCP_PORT", "8000"))
-
+    host, port = os.getenv("MCP_HOST", "0.0.0.0"), int(os.getenv("MCP_PORT", "8000"))
     if len(sys.argv) > 1:
-        if "sse" in sys.argv:
-            transport = "sse"
-        elif "stdio" in sys.argv:
-            transport = "stdio"
-
+        if "sse" in sys.argv: transport = "sse"
+        elif "stdio" in sys.argv: transport = "stdio"
     if transport == "sse":
         logger.info(f"Starting Homebox MCP server over SSE on {host}:{port}")
         logger.info(f"Endpoint: http://{host}:{port}/sse")

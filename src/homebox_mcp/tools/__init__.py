@@ -3,7 +3,7 @@ from fastmcp import FastMCP
 
 def register_all_tools(mcp: FastMCP, client: HomeboxClient):
     # Import modules and pass the mcp and client to them
-    from . import items, locations, labels, groups, misc, notifiers, actions, templates, users, maintenance, images, benchmark
+    from . import items, locations, labels, groups, misc, notifiers, actions, templates, users, maintenance, images
     
     items.register_items_tools(mcp, client)
     locations.register_locations_tools(mcp, client)
@@ -16,4 +16,3 @@ def register_all_tools(mcp: FastMCP, client: HomeboxClient):
     users.register_users_tools(mcp, client)
     maintenance.register_maintenance_tools(mcp, client)
     images.register_vision_tools(mcp, client)
-    benchmark.register_benchmark_tools(mcp, client)

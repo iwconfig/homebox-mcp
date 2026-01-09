@@ -37,23 +37,16 @@ def local_http_server():
     """Starts a simple HTTP server in a background thread to act as a webhook receiver."""
     from http.server import HTTPServer, BaseHTTPRequestHandler
     import threading
-
     class WebhookHandler(BaseHTTPRequestHandler):
         def do_POST(self):
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
             self.end_headers()
             self.wfile.write(b'{"status": "ok"}')
-        
-        def log_message(self, format, *args):
-            return # Silence server logs
-
+        def log_message(self, format, *args): return # Silence server logs
     server = HTTPServer(('127.0.0.1', 0), WebhookHandler)
     host, port = server.server_address
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    
     yield f"http://{host}:{port}"
-    
-    server.shutdown()
-    server.server_close()
+    server.shutdown(); server.server_close()

@@ -8,14 +8,14 @@ async def handle_get_group(client: HomeboxClient) -> str:
     data = await client.request("GET", "groups")
     return json.dumps(data, indent=2)
 
-async def handle_update_group(client: HomeboxClient, name: str = None, currency: str = None) -> str:
+async def handle_update_group(client: HomeboxClient, name: str | None = None, currency: str | None = None) -> str:
     payload = {}
     if name: payload["name"] = name
     if currency: payload["currency"] = currency
     data = await client.request("PUT", "groups", json=payload)
     return f"Updated Group: {json.dumps(data, indent=2)}"
 
-async def handle_create_group_invitation(client: HomeboxClient, uses: int = 1, expiresAt: str = None) -> str:
+async def handle_create_group_invitation(client: HomeboxClient, uses: int = 1, expiresAt: str | None = None) -> str:
     payload = {"uses": uses}
     if expiresAt: payload["expiresAt"] = expiresAt
     data = await client.request("POST", "groups/invitations", json=payload)
@@ -33,7 +33,7 @@ async def handle_get_location_statistics(client: HomeboxClient) -> str:
     data = await client.request("GET", "groups/statistics/locations")
     return json.dumps(data, indent=2)
 
-async def handle_get_purchase_price_statistics(client: HomeboxClient, start: str = None, end: str = None) -> str:
+async def handle_get_purchase_price_statistics(client: HomeboxClient, start: str | None = None, end: str | None = None) -> str:
     params = {}
     if start: params["start"] = start
     if end: params["end"] = end
@@ -44,46 +44,37 @@ async def handle_export_bom(client: HomeboxClient) -> str:
     data = await client.request("GET", "reporting/bill-of-materials")
     return str(data)
 
-
 # --- Registration ---
 
 def register_groups_tools(mcp: FastMCP, client: HomeboxClient):
-
     @mcp.tool()
     async def get_group() -> str:
         """Get Group Info"""
         return await handle_get_group(client)
-
     @mcp.tool()
-    async def update_group(name: str = None, currency: str = None) -> str:
+    async def update_group(name: str | None = None, currency: str | None = None) -> str:
         """Update Group Info"""
         return await handle_update_group(client, name, currency)
-
     @mcp.tool()
-    async def create_group_invitation(uses: int = 1, expiresAt: str = None) -> str:
+    async def create_group_invitation(uses: int = 1, expiresAt: str | None = None) -> str:
         """Create Group Invitation"""
         return await handle_create_group_invitation(client, uses, expiresAt)
-
     @mcp.tool()
     async def get_group_statistics() -> str:
         """Get Group Statistics"""
         return await handle_get_group_statistics(client)
-
     @mcp.tool()
     async def get_label_statistics() -> str:
         """Get Label Statistics"""
         return await handle_get_label_statistics(client)
-
     @mcp.tool()
     async def get_location_statistics() -> str:
         """Get Location Statistics"""
         return await handle_get_location_statistics(client)
-
     @mcp.tool()
-    async def get_purchase_price_statistics(start: str = None, end: str = None) -> str:
+    async def get_purchase_price_statistics(start: str | None = None, end: str | None = None) -> str:
         """Get Purchase Price Statistics"""
         return await handle_get_purchase_price_statistics(client, start, end)
-
     @mcp.tool()
     async def export_bom() -> str:
         """Export Bill of Materials"""

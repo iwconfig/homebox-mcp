@@ -16,7 +16,7 @@ async def handle_list_locations(client: HomeboxClient, filterChildren: bool = Fa
     return output
 
 @protect_resource(resource_type="locations", action="create")
-async def handle_create_location(client: HomeboxClient, name: str, description: str = None, parentId: str = None) -> str:
+async def handle_create_location(client: HomeboxClient, name: str, description: str | None = None, parentId: str | None = None) -> str:
     payload = {"name": name}
     if description: payload["description"] = description
     if parentId: payload["parentId"] = parentId
@@ -34,15 +34,13 @@ async def handle_get_location(client: HomeboxClient, id: str) -> str:
     return f"Location: {data.get('name')}\nLink: {link}\n\n{json.dumps(data, indent=2)}"
 
 @protect_resource(resource_type="locations", action="update")
-async def handle_update_location(client: HomeboxClient, id: str, name: str = None, description: str = None, parentId: str = None) -> str:
+async def handle_update_location(client: HomeboxClient, id: str, name: str | None = None, description: str | None = None, parentId: str | None = None) -> str:
     existing = await client.request("GET", f"locations/{id}")
     payload = existing.copy()
     if name: payload["name"] = name
     if description: payload["description"] = description
     if parentId: payload["parentId"] = parentId
-    elif "parent" in existing and existing["parent"]:
-        payload["parentId"] = existing["parent"]["id"]
-
+    elif "parent" in existing and existing["parent"]: payload["parentId"] = existing["parent"]["id"]
     data = await client.request("PUT", f"locations/{id}", json=payload)
     return f"Updated Location: {json.dumps(data, indent=2)}"
 
@@ -62,7 +60,7 @@ def register_locations_tools(mcp: FastMCP, client: HomeboxClient):
         return await handle_list_locations(client, filterChildren)
 
     @mcp.tool()
-    async def create_location(name: str, description: str = None, parentId: str = None) -> str:
+    async def create_location(name: str, description: str | None = None, parentId: str | None = None) -> str:
         """Create Location"""
         return await handle_create_location(client, name, description, parentId)
 
@@ -77,7 +75,7 @@ def register_locations_tools(mcp: FastMCP, client: HomeboxClient):
         return await handle_get_location(client, id)
 
     @mcp.tool()
-    async def update_location(id: str, name: str = None, description: str = None, parentId: str = None) -> str:
+    async def update_location(id: str, name: str | None = None, description: str | None = None, parentId: str | None = None) -> str:
         """Update Location"""
         return await handle_update_location(client, id, name, description, parentId)
 

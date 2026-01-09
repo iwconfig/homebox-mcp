@@ -5,7 +5,7 @@ from mcp.types import PromptMessage, TextContent, ImageContent
 def register_all_prompts(mcp: FastMCP):
     """Register all prompts with the FastMCP server."""
     
-    @mcp.prompt()
+    @mcp.prompt(name="analyze-item")
     def analyze_item() -> str:
         """
         Comprehensive prompt for analyzing inventory items from images.
