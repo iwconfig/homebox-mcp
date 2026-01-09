@@ -2,7 +2,6 @@ import os
 import re
 import functools
 import inspect
-from typing import Set
 
 # Cache to remember IDs that matched protected emails during this process lifecycle
 # This prevents redundant lookups and ensures consistency if a user's email changes
@@ -51,7 +50,6 @@ def check_user_protection(user_data: dict, action_desc: str):
     - HOMEBOX_PROTECTED_USERS (Modification + Deletion)
     - HOMEBOX_NON_DELETABLE_USERS (Deletion only)
     """
-    u_id = user_data.get("id")
     u_email = user_data.get("email")
     u_username = user_data.get("username")
     

@@ -3,7 +3,6 @@ import os
 import sys
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
-import uvicorn
 from fastmcp import FastMCP
 from .client import HomeboxClient
 from .tools import register_all_tools

@@ -1,6 +1,6 @@
 import json
 from ..client import HomeboxClient
-from fastmcp import FastMCP, Context
+from fastmcp import FastMCP
 from fastmcp.utilities.types import Image
 
 # --- Tool Handlers ---

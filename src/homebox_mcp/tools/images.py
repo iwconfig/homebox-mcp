@@ -1,13 +1,9 @@
 import os
-import json
-import base64
 import io
 import logging
-import mimetypes
-from typing import List, Dict, Any, Literal
+from typing import Any, Literal
 from PIL import Image as PILImage
 from ..client import HomeboxClient
-from ..guardrails import protect_resource
 from fastmcp import FastMCP, Context
 from fastmcp.utilities.types import Image
 
@@ -26,7 +22,7 @@ async def handle_get_inbox_queue(client: HomeboxClient) -> list[dict[str, Any]]:
     
     # 1. Fetch from Homebox API (Items in 'Inbox' location)
     locations = await client.request("GET", "locations")
-    inbox_location = next((l for l in locations if l["name"].lower() == "inbox"), None)
+    inbox_location = next((loc for loc in locations if loc["name"].lower() == "inbox"), None)
     
     if inbox_location:
         inbox_items = await client.request("GET", "items", params={"locations": [inbox_location["id"]]})
@@ -185,7 +181,7 @@ async def handle_finalize_processed_item(
         if "location" in item and item["location"]:
             update_payload["locationId"] = item["location"]["id"]
         if "labels" in item and item["labels"]:
-            update_payload["labelIds"] = [l["id"] for l in item["labels"]]
+            update_payload["labelIds"] = [label["id"] for label in item["labels"]]
             
         update_payload.update({
             "name": name,

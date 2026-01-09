@@ -1,6 +1,4 @@
-from typing import List, Optional
-from fastmcp import FastMCP, Context
-from mcp.types import PromptMessage, TextContent, ImageContent
+from fastmcp import FastMCP
 
 def register_all_prompts(mcp: FastMCP):
     """Register all prompts with the FastMCP server."""

@@ -3,7 +3,6 @@ import os
 import mimetypes
 import httpx
 import base64
-import re
 from datetime import datetime, timezone
 from typing import Annotated
 from pydantic import Field
@@ -41,27 +40,36 @@ async def handle_list_items(
     orderBy: str | None = None
 ) -> str:
     params = {}
-    if q: params["q"] = q
-    if page: params["page"] = page
-    if pageSize: params["pageSize"] = pageSize
-    if labels: params["labels"] = labels
-    if locations: params["locations"] = locations
-    if parentIds: params["parentIds"] = parentIds
+    if q:
+        params["q"] = q
+    if page:
+        params["page"] = page
+    if pageSize:
+        params["pageSize"] = pageSize
+    if labels:
+        params["labels"] = labels
+    if locations:
+        params["locations"] = locations
+    if parentIds:
+        params["parentIds"] = parentIds
     params.update({
         "negateLabels": str(negateLabels).lower(),
         "onlyWithoutPhoto": str(onlyWithoutPhoto).lower(),
         "onlyWithPhoto": str(onlyWithPhoto).lower(),
         "includeArchived": str(includeArchived).lower()
     })
-    if orderBy: params["orderBy"] = orderBy
+    if orderBy:
+        params["orderBy"] = orderBy
     data = await client.request("GET", "items", params=params)
     items = data.get("items", [])
     output = f"Found {data.get('total', len(items))} items (Page {data.get('page', 1)}/{data.get('totalPages', '?')})\n\n"
     for item in items:
         link = client.get_web_url("item", item["id"])
         output += f"- [{item.get('name')}]({link}) (ID: {item.get('id')})\n"
-        if loc := item.get("location"): output += f"  Location: {loc.get('name')}\n"
-        if qty := item.get("quantity"): output += f"  Qty: {qty}\n"
+        if loc := item.get("location"):
+            output += f"  Location: {loc.get('name')}\n"
+        if qty := item.get("quantity"):
+            output += f"  Qty: {qty}\n"
     return output
 
 async def handle_get_item(client: HomeboxClient, id: str) -> str:
@@ -72,13 +80,15 @@ async def handle_get_item(client: HomeboxClient, id: str) -> str:
 async def handle_get_item_link(client: HomeboxClient, query: str) -> str:
     search_query = query
     if query.isdigit() or (("-" in query) and query.replace("-", "").isdigit()):
-        if not query.startswith("#"): search_query = f"#{query}"
+        if not query.startswith("#"):
+            search_query = f"#{query}"
     data = await client.request("GET", "items", params={"q": search_query, "pageSize": 5})
     items = data.get("items", [])
     if not items and search_query != query:
         data = await client.request("GET", "items", params={"q": query, "pageSize": 5})
         items = data.get("items", [])
-    if not items: return f"No items found matching '{query}'"
+    if not items:
+        return f"No items found matching '{query}'"
     if len(items) == 1:
         item = items[0]
         link = client.get_web_url("item", item["id"])
@@ -105,35 +115,60 @@ async def handle_create_item(
     notes: str | None = None,
     ctx: Context | None = None
 ) -> str:
-    if ctx: await ctx.info(f"Creating item '{name}'...")
-    create_payload = {"name": name, "quantity": int(quantity), "description": description or "", "labelIds": labelIds or [], "locationId": locationId}
-    if parentId: create_payload["parentId"] = parentId
+    if ctx:
+        await ctx.info(f"Creating item '{name}'...")
+    create_payload = {
+        "name": name,
+        "quantity": int(quantity),
+        "description": description or "",
+        "labelIds": labelIds or [],
+        "locationId": locationId
+    }
+    if parentId:
+        create_payload["parentId"] = parentId
     created_item = await client.request("POST", "items", json=create_payload)
     item_id = created_item["id"]
-    if ctx: await ctx.report_progress(50, 100, message="Item created, enriching metadata...")
+    if ctx:
+        await ctx.report_progress(50, 100, message="Item created, enriching metadata...")
     try:
         update_payload = created_item.copy()
-        if loc := created_item.get("location"): update_payload["locationId"] = loc["id"]
-        elif locationId: update_payload["locationId"] = locationId
-        if parent := created_item.get("parent"): update_payload["parentId"] = parent["id"]
-        elif parentId: update_payload["parentId"] = parentId
-        if labels := created_item.get("labels"): update_payload["labelIds"] = [l["id"] for l in labels]
-        elif labelIds: update_payload["labelIds"] = labelIds
-        if notes is not None: update_payload["notes"] = notes
-        if serialNumber is not None: update_payload["serialNumber"] = serialNumber
-        if modelNumber is not None: update_payload["modelNumber"] = modelNumber
-        if manufacturer is not None: update_payload["manufacturer"] = manufacturer
-        if purchasePrice is not None: update_payload["purchasePrice"] = str(purchasePrice)
+        if loc := created_item.get("location"):
+            update_payload["locationId"] = loc["id"]
+        elif locationId:
+            update_payload["locationId"] = locationId
+        if parent := created_item.get("parent"):
+            update_payload["parentId"] = parent["id"]
+        elif parentId:
+            update_payload["parentId"] = parentId
+        if labels := created_item.get("labels"):
+            update_payload["labelIds"] = [label["id"] for label in labels]
+        elif labelIds:
+            update_payload["labelIds"] = labelIds
+        if notes is not None:
+            update_payload["notes"] = notes
+        if serialNumber is not None:
+            update_payload["serialNumber"] = serialNumber
+        if modelNumber is not None:
+            update_payload["modelNumber"] = modelNumber
+        if manufacturer is not None:
+            update_payload["manufacturer"] = manufacturer
+        if purchasePrice is not None:
+            update_payload["purchasePrice"] = str(purchasePrice)
         for key in ["purchaseFrom", "soldTo", "soldNotes", "warrantyDetails"]:
-            if key not in update_payload: update_payload[key] = ""
+            if key not in update_payload:
+                update_payload[key] = ""
         for key in ["purchaseTime", "soldTime", "warrantyExpires"]:
-            if key not in update_payload: update_payload[key] = "0001-01-01T00:00:00Z"
+            if key not in update_payload:
+                update_payload[key] = "0001-01-01T00:00:00Z"
         final_item = await client.request("PUT", f"items/{item_id}", json=update_payload)
-        if ctx: await ctx.report_progress(100, 100, message="Item enriched successfully.")
+        if ctx:
+            await ctx.report_progress(100, 100, message="Item enriched successfully.")
         return f"Created and Enriched Item: {json.dumps(final_item, indent=2)}"
     except Exception as e:
-        try: await client.request("DELETE", f"items/{item_id}")
-        except Exception: pass
+        try:
+            await client.request("DELETE", f"items/{item_id}")
+        except Exception:
+            pass
         raise e
 
 @protect_resource(resource_type="items", action="update")
@@ -154,38 +189,60 @@ async def handle_update_item(
     fields: list[dict] | None = None,
     ctx: Context | None = None
 ) -> str:
-    if ctx: await ctx.info(f"Updating item {id}...")
+    if ctx:
+        await ctx.info(f"Updating item {id}...")
     existing = await client.request("GET", f"items/{id}")
     update_payload = existing.copy()
-    if loc := existing.get("location"): update_payload["locationId"] = loc["id"]
-    if parent := existing.get("parent"): update_payload["parentId"] = parent["id"]
-    if labels := existing.get("labels"): update_payload["labelIds"] = [l["id"] for l in labels]
-    if name is not None: update_payload["name"] = name
-    if description is not None: update_payload["description"] = description
-    if notes is not None: update_payload["notes"] = notes
-    if quantity is not None: update_payload["quantity"] = int(quantity)
-    if locationId is not None: update_payload["locationId"] = locationId
-    if parentId is not None: update_payload["parentId"] = parentId
-    if labelIds is not None: update_payload["labelIds"] = labelIds
-    if serialNumber is not None: update_payload["serialNumber"] = serialNumber
-    if modelNumber is not None: update_payload["modelNumber"] = modelNumber
-    if manufacturer is not None: update_payload["manufacturer"] = manufacturer
-    if purchasePrice is not None: update_payload["purchasePrice"] = str(purchasePrice)
-    if fields is not None: update_payload["fields"] = fields
+    if loc := existing.get("location"):
+        update_payload["locationId"] = loc["id"]
+    if parent := existing.get("parent"):
+        update_payload["parentId"] = parent["id"]
+    if labels := existing.get("labels"):
+        update_payload["labelIds"] = [label["id"] for label in labels]
+    if name is not None:
+        update_payload["name"] = name
+    if description is not None:
+        update_payload["description"] = description
+    if notes is not None:
+        update_payload["notes"] = notes
+    if quantity is not None:
+        update_payload["quantity"] = int(quantity)
+    if locationId is not None:
+        update_payload["locationId"] = locationId
+    if parentId is not None:
+        update_payload["parentId"] = parentId
+    if labelIds is not None:
+        update_payload["labelIds"] = labelIds
+    if serialNumber is not None:
+        update_payload["serialNumber"] = serialNumber
+    if modelNumber is not None:
+        update_payload["modelNumber"] = modelNumber
+    if manufacturer is not None:
+        update_payload["manufacturer"] = manufacturer
+    if purchasePrice is not None:
+        update_payload["purchasePrice"] = str(purchasePrice)
+    if fields is not None:
+        update_payload["fields"] = fields
     for key in ["purchaseFrom", "soldTo", "soldNotes", "warrantyDetails"]:
-        if key not in update_payload: update_payload[key] = existing.get(key, "")
+        if key not in update_payload:
+            update_payload[key] = existing.get(key, "")
     for key in ["purchaseTime", "soldTime", "warrantyExpires"]:
-        if key not in update_payload: update_payload[key] = existing.get(key, "0001-01-01T00:00:00Z")
+        if key not in update_payload:
+            update_payload[key] = existing.get(key, "0001-01-01T00:00:00Z")
     data = await client.request("PUT", f"items/{id}", json=update_payload)
-    if ctx: await ctx.info(f"Item {id} updated successfully.")
+    if ctx:
+        await ctx.info(f"Item {id} updated successfully.")
     return f"Updated Item: {json.dumps(data, indent=2)}"
 
 @protect_resource(resource_type="items", action="update")
 async def handle_patch_item(client: HomeboxClient, id: str, locationId: str | None = None, quantity: int | None = None, labelIds: list[str] | None = None) -> str:
     payload = {}
-    if locationId: payload["locationId"] = locationId
-    if quantity is not None: payload["quantity"] = quantity
-    if labelIds: payload["labelIds"] = labelIds
+    if locationId:
+        payload["locationId"] = locationId
+    if quantity is not None:
+        payload["quantity"] = quantity
+    if labelIds:
+        payload["labelIds"] = labelIds
     data = await client.request("PATCH", f"items/{id}", json=payload)
     return f"Patched Item: {json.dumps(data, indent=2)}"
 
@@ -209,7 +266,8 @@ async def handle_get_item_field_values(client: HomeboxClient, field: str) -> str
     try:
         data = await client.request("GET", "items/fields/values", params={"field": field})
         return json.dumps(data, indent=2)
-    except Exception as e: return f"Error fetching item field values for '{field}': {str(e)}"
+    except Exception as e:
+        return f"Error fetching item field values for '{field}': {str(e)}"
 
 async def handle_duplicate_item(client: HomeboxClient, id: str, copyAttachments: bool = False, copyCustomFields: bool = False, copyMaintenance: bool = False, copyPrefix: str = "Copy of ") -> str:
     payload = {"copyAttachments": copyAttachments, "copyCustomFields": copyCustomFields, "copyMaintenance": copyMaintenance, "copyPrefix": copyPrefix}
@@ -231,7 +289,8 @@ async def handle_delete_item_attachment(client: HomeboxClient, id: str, attachme
 async def handle_update_item_attachment(client: HomeboxClient, id: str, attachment_id: str, primary: bool | None = None, title: str | None = None, type: str | None = None) -> str:
     item = await client.request("GET", f"items/{id}")
     existing = next((a for a in item.get("attachments", []) if a["id"] == attachment_id), None)
-    if not existing: return f"Error: Attachment {attachment_id} not found on item {id}"
+    if not existing:
+        return f"Error: Attachment {attachment_id} not found on item {id}"
     payload = {"primary": primary if primary is not None else existing.get("primary", False), "title": title if title is not None else existing.get("title", ""), "type": type if type is not None else existing.get("type", "attachment")}
     data = await client.request("PUT", f"items/{id}/attachments/{attachment_id}", json=payload)
     return f"Updated Attachment: {json.dumps(data, indent=2)}"
@@ -246,7 +305,8 @@ async def handle_create_item_maintenance(client: HomeboxClient, id: str, name: s
     try:
         data = await client.request("POST", f"items/{id}/maintenance", json=payload)
         return json.dumps(data, indent=2)
-    except Exception as e: return f"Error creating maintenance entry: {str(e)}"
+    except Exception as e:
+        return f"Error creating maintenance entry: {str(e)}"
 
 async def handle_upload_item_attachment(
     client: HomeboxClient,
@@ -258,36 +318,50 @@ async def handle_upload_item_attachment(
     file_name, mime_type, file_content = "upload", 'application/octet-stream', b""
     if file_path.startswith("data:"):
         try:
-            header, encoded = file_path.split(",", 1); mime_type = header.split(";")[0].split(":")[1]; file_content = base64.b64decode(encoded)
+            header, encoded = file_path.split(",", 1)
+            mime_type = header.split(";")[0].split(":")[1]
+            file_content = base64.b64decode(encoded)
             file_name = f"upload{mimetypes.guess_extension(mime_type) or '.bin'}"
-        except Exception as e: return f"Error: Failed to decode base64 data: {str(e)}"
+        except Exception as e:
+            return f"Error: Failed to decode base64 data: {str(e)}"
     elif file_path.startswith(("http://", "https://")):
         try:
             async with httpx.AsyncClient() as http_client:
-                resp = await http_client.get(file_path, follow_redirects=True); resp.raise_for_status(); file_content = resp.content
+                resp = await http_client.get(file_path, follow_redirects=True)
+                resp.raise_for_status()
+                file_content = resp.content
                 mime_type = resp.headers.get("content-type", "").split(";")[0] or mime_type
                 file_name = os.path.basename(file_path.split("?")[0]) or "upload"
-                if "." not in file_name: file_name += (mimetypes.guess_extension(mime_type) or "")
-        except Exception as e: return f"Error: Failed to download from URL: {str(e)}"
+                if "." not in file_name:
+                    file_name += (mimetypes.guess_extension(mime_type) or "")
+        except Exception as e:
+            return f"Error: Failed to download from URL: {str(e)}"
     else:
-        if not os.path.exists(file_path): return f"Error: File not found at {file_path}"
+        if not os.path.exists(file_path):
+            return f"Error: File not found at {file_path}"
         file_name, mime_type = os.path.basename(file_path), mimetypes.guess_type(file_path)[0] or mime_type
         try:
-            with open(file_path, 'rb') as f: file_content = f.read()
-        except Exception as e: return f"Error: Failed to read local file: {str(e)}"
+            with open(file_path, 'rb') as f:
+                file_content = f.read()
+        except Exception as e:
+            return f"Error: Failed to read local file: {str(e)}"
     files = {'file': (file_name, file_content, mime_type)}
     try:
         result = await client.request("POST", f"items/{item_id}/attachments", files=files, data={'name': file_name, 'type': attachment_type, 'primary': 'true' if primary else 'false'})
         return f"Attachment uploaded successfully: {json.dumps(result, indent=2)}"
-    except Exception as e: return f"Failed to upload attachment: {str(e)}"
+    except Exception as e:
+        return f"Failed to upload attachment: {str(e)}"
 
 async def handle_import_items(client: HomeboxClient, file_path: str) -> str:
-    if not os.path.exists(file_path): return f"Error: File not found at {file_path}"
-    with open(file_path, 'rb') as f: file_content = f.read()
+    if not os.path.exists(file_path):
+        return f"Error: File not found at {file_path}"
+    with open(file_path, 'rb') as f:
+        file_content = f.read()
     try:
         await client.request("POST", "items/import", files={'csv': (os.path.basename(file_path), file_content, 'text/csv')})
         return "Items imported successfully."
-    except Exception as e: return f"Failed to import items: {str(e)}"
+    except Exception as e:
+        return f"Failed to import items: {str(e)}"
 
 # --- Registration ---
 
@@ -397,10 +471,9 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
     async def get_item_image(id: str) -> Image:
         """Retrieve the primary image for an item."""
         return await handle_get_item_image(client, id)
-    
-        # Tool Transformation Example: Specialized archived items list
-        mcp.add_tool(Tool.from_tool(
-            list_items, name="list_archived_items",
-            description="Query only archived items in the inventory.",
-            transform_args={"includeArchived": ArgTransform(hide=True, default=True)}
-        ))
+    # Tool Transformation Example: Specialized archived items list
+    mcp.add_tool(Tool.from_tool(
+        list_items, name="list_archived_items",
+        description="Query only archived items in the inventory.",
+        transform_args={"includeArchived": ArgTransform(hide=True, default=True)}
+    ))

@@ -2,7 +2,7 @@ import json
 import os
 from ..client import HomeboxClient
 from ..guardrails import protect_resource, check_user_protection
-from fastmcp import FastMCP, Context
+from fastmcp import FastMCP
 
 # --- Tool Handlers ---
 
