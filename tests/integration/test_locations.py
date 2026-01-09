@@ -19,39 +19,43 @@ def get_id(text):
 @pytest.mark.anyio
 async def test_location_lifecycle(server_session):
     # 1. List locations (initial)
-    res = await server_session.call_tool("list_locations", {})
-    assert not getattr(res, "isError", False)
+    res = await server_session.call_tool("list_locations", {}, raise_on_error=False)
+    assert not res.is_error
 
     # 2. Create location
     loc_name = f"Test-Loc-{uuid.uuid4().hex[:6]}"
-    res = await server_session.call_tool("create_location", {"name": loc_name, "description": "Test Description"})
-    assert not getattr(res, "isError", False)
+    res = await server_session.call_tool(
+        "create_location", {"name": loc_name, "description": "Test Description"}, raise_on_error=False
+    )
+    assert not res.is_error
     loc_id = get_id(res.content[0].text)
     assert loc_id is not None
 
     # 3. Get location
-    res = await server_session.call_tool("get_location", {"id": loc_id})
-    assert not getattr(res, "isError", False)
+    res = await server_session.call_tool("get_location", {"id": loc_id}, raise_on_error=False)
+    assert not res.is_error
     assert loc_name in res.content[0].text
 
     # 4. Update location
     new_desc = "Updated Description"
-    res = await server_session.call_tool("update_location", {"id": loc_id, "description": new_desc})
-    assert not getattr(res, "isError", False)
+    res = await server_session.call_tool(
+        "update_location", {"id": loc_id, "description": new_desc}, raise_on_error=False
+    )
+    assert not res.is_error
 
     # Verify update
-    res = await server_session.call_tool("get_location", {"id": loc_id})
+    res = await server_session.call_tool("get_location", {"id": loc_id}, raise_on_error=False)
     assert new_desc in res.content[0].text
 
     # 5. Tree
-    res = await server_session.call_tool("get_locations_tree", {})
-    assert not getattr(res, "isError", False)
+    res = await server_session.call_tool("get_locations_tree", {}, raise_on_error=False)
+    assert not res.is_error
     assert loc_name in res.content[0].text
 
     # 6. Delete location
-    res = await server_session.call_tool("delete_location", {"id": loc_id})
-    assert not getattr(res, "isError", False)
+    res = await server_session.call_tool("delete_location", {"id": loc_id}, raise_on_error=False)
+    assert not res.is_error
 
     # 7. Verify deletion (should fail or not be in list)
-    res = await server_session.call_tool("get_location", {"id": loc_id})
-    assert getattr(res, "isError", False)
+    res = await server_session.call_tool("get_location", {"id": loc_id}, raise_on_error=False)
+    assert res.is_error

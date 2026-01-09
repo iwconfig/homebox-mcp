@@ -4,8 +4,8 @@ import string
 import uuid
 
 import pytest
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
+from fastmcp import Client
+from fastmcp.client.transports import StdioTransport
 
 
 def random_string(length=8):
@@ -23,20 +23,22 @@ async def run_user_test_session():
     if not env.get("HOMEBOX_API_KEY") and not env.get("HOMEBOX_USERNAME"):
         pytest.skip("No Homebox credentials found in environment")
 
-    server_params = StdioServerParameters(command=".venv/bin/python", args=["-m", "homebox_mcp.server"], env=env)
+    transport = StdioTransport(
+        command=".venv/bin/python",
+        args=["-m", "homebox_mcp.server"],
+        env=env
+    )
 
-    async with stdio_client(server_params) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            yield session
+    async with Client(transport=transport) as client:
+        yield client
 
 
 @pytest.mark.anyio
 async def test_user_lifecycle():
     async for server_session in run_user_test_session():
         # 1. Get Self
-        res = await server_session.call_tool("get_user_self", {})
-        assert not getattr(res, "isError", False)
+        res = await server_session.call_tool("get_user_self", {}, raise_on_error=False)
+        assert not res.is_error
 
         # 2. Register User
         new_name = "Test User"
@@ -46,27 +48,31 @@ async def test_user_lifecycle():
         res = await server_session.call_tool(
             "register_user", {"name": new_name, "email": new_email, "password": new_pass}
         )
-        assert not getattr(res, "isError", False)
+        assert not res.is_error
 
         # 3. Login
-        res = await server_session.call_tool("login_user", {"username": new_email, "password": new_pass})
-        assert not getattr(res, "isError", False)
+        res = await server_session.call_tool(
+            "login_user", {"username": new_email, "password": new_pass}, raise_on_error=False
+        )
+        assert not res.is_error
         assert "Logged in" in res.content[0].text
 
         # 4. Update Self (while logged in as new user)
         updated_name = "Updated Test User"
-        res = await server_session.call_tool("update_user_self", {"name": updated_name})
-        assert not getattr(res, "isError", False)
+        res = await server_session.call_tool("update_user_self", {"name": updated_name}, raise_on_error=False)
+        assert not res.is_error
         assert updated_name in res.content[0].text
 
         # 5. Change Password
-        res = await server_session.call_tool("change_password", {"current": new_pass, "new": "NewPassword123!"})
-        assert not getattr(res, "isError", False)
+        res = await server_session.call_tool(
+            "change_password", {"current": new_pass, "new": "NewPassword123!"}, raise_on_error=False
+        )
+        assert not res.is_error
 
         # 6. Delete User Self
-        res = await server_session.call_tool("delete_user_self", {})
-        assert not getattr(res, "isError", False)
+        res = await server_session.call_tool("delete_user_self", {}, raise_on_error=False)
+        assert not res.is_error
 
         # 7. Logout (reverts to default user)
-        res = await server_session.call_tool("logout_user", {})
-        assert not getattr(res, "isError", False)
+        res = await server_session.call_tool("logout_user", {}, raise_on_error=False)
+        assert not res.is_error

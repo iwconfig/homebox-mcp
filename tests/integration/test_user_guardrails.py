@@ -3,8 +3,8 @@ import random
 import string
 
 import pytest
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
+from fastmcp import Client
+from fastmcp.client.transports import StdioTransport
 
 
 def random_string(length=8):
@@ -20,12 +20,14 @@ async def run_scenario_session(env_vars):
     env["HOMEBOX_ALLOW_USER_DELETION"] = "true"
     env.update(env_vars)
 
-    server_params = StdioServerParameters(command=".venv/bin/python", args=["-m", "homebox_mcp.server"], env=env)
+    transport = StdioTransport(
+        command=".venv/bin/python",
+        args=["-m", "homebox_mcp.server"],
+        env=env
+    )
 
-    async with stdio_client(server_params) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            yield session
+    async with Client(transport=transport) as client:
+        yield client
 
 
 @pytest.mark.anyio
@@ -39,21 +41,24 @@ async def test_user_safety_switches_disabled_by_default():
     env.pop("HOMEBOX_ALLOW_USER_REGISTRATION", None)
     env.pop("HOMEBOX_ALLOW_USER_DELETION", None)
 
-    server_params = StdioServerParameters(command=".venv/bin/python", args=["-m", "homebox_mcp.server"], env=env)
+    transport = StdioTransport(
+        command=".venv/bin/python",
+        args=["-m", "homebox_mcp.server"],
+        env=env
+    )
 
-    async with stdio_client(server_params) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
+    async with Client(transport=transport) as client:
+        # Register should fail
+        res = await client.call_tool(
+            "register_user", {"name": "Test", "email": "test@ex.com", "password": "Pass"}, raise_on_error=False
+        )
+        assert res.is_error
+        assert "is disabled via safety switch" in res.content[0].text
 
-            # Register should fail
-            res = await session.call_tool("register_user", {"name": "Test", "email": "test@ex.com", "password": "Pass"})
-            assert res.isError is True
-            assert "is disabled via safety switch" in res.content[0].text
-
-            # Delete should fail
-            res = await session.call_tool("delete_user_self", {})
-            assert res.isError is True
-            assert "is disabled via safety switch" in res.content[0].text
+        # Delete should fail
+        res = await client.call_tool("delete_user_self", {}, raise_on_error=False)
+        assert res.is_error
+        assert "is disabled via safety switch" in res.content[0].text
 
 
 @pytest.mark.anyio
@@ -66,17 +71,21 @@ async def test_full_user_protection():
 
     async for session in run_scenario_session(env_vars):
         # Setup: Register and Login
-        await session.call_tool("register_user", {"name": u_name, "email": u_email, "password": u_pass})
-        await session.call_tool("login_user", {"username": u_email, "password": u_pass})
+        await session.call_tool(
+            "register_user", {"name": u_name, "email": u_email, "password": u_pass}, raise_on_error=False
+        )
+        await session.call_tool(
+            "login_user", {"username": u_email, "password": u_pass}, raise_on_error=False
+        )
 
         # Test Update (Should Fail)
-        res = await session.call_tool("update_user_self", {"name": "New Name"})
-        assert res.isError is True
+        res = await session.call_tool("update_user_self", {"name": "New Name"}, raise_on_error=False)
+        assert res.is_error
         assert "disabled" in res.content[0].text.lower()
 
         # Test Delete (Should Fail)
-        res = await session.call_tool("delete_user_self", {})
-        assert res.isError is True
+        res = await session.call_tool("delete_user_self", {}, raise_on_error=False)
+        assert res.is_error
         assert "disabled" in res.content[0].text.lower()
 
 
@@ -89,23 +98,30 @@ async def test_non_deletable_user_protection():
     env_vars = {"HOMEBOX_NON_DELETABLE_USERS": u_email}
 
     async for session in run_scenario_session(env_vars):
-        # Setup
-        await session.call_tool("register_user", {"name": u_name, "email": u_email, "password": u_pass})
-        await session.call_tool("login_user", {"username": u_email, "password": u_pass})
+        await session.call_tool(
+            "register_user", {"name": u_name, "email": u_email, "password": u_pass}, raise_on_error=False
+        )
+        await session.call_tool(
+            "login_user", {"username": u_email, "password": u_pass}, raise_on_error=False
+        )
 
         # Test Name Update (Same Email) - Should Succeed
-        res = await session.call_tool("update_user_self", {"name": "UpdatedName", "email": u_email})
-        assert not getattr(res, "isError", False)
+        res = await session.call_tool(
+            "update_user_self", {"name": "UpdatedName", "email": u_email}, raise_on_error=False
+        )
+        assert not res.is_error
 
         # Test Email Update (New Email) - Should Fail (Loophole Protection)
         new_email = f"new_{random_string()}@example.com"
-        res = await session.call_tool("update_user_self", {"name": "UpdatedName", "email": new_email})
-        assert res.isError is True
+        res = await session.call_tool(
+            "update_user_self", {"name": "UpdatedName", "email": new_email}, raise_on_error=False
+        )
+        assert res.is_error
         assert "disabled" in res.content[0].text.lower()
 
         # Test Delete (Should Fail)
-        res = await session.call_tool("delete_user_self", {})
-        assert res.isError is True
+        res = await session.call_tool("delete_user_self", {}, raise_on_error=False)
+        assert res.is_error
         assert "disabled" in res.content[0].text.lower()
 
 
@@ -118,11 +134,14 @@ async def test_all_users_protected():
     env_vars = {"HOMEBOX_PROTECTED_USERS": "all"}
 
     async for session in run_scenario_session(env_vars):
-        # Setup
-        await session.call_tool("register_user", {"name": u_name, "email": u_email, "password": u_pass})
-        await session.call_tool("login_user", {"username": u_email, "password": u_pass})
+        await session.call_tool(
+            "register_user", {"name": u_name, "email": u_email, "password": u_pass}, raise_on_error=False
+        )
+        await session.call_tool(
+            "login_user", {"username": u_email, "password": u_pass}, raise_on_error=False
+        )
 
         # Test Update (Should Fail for 'all')
-        res = await session.call_tool("update_user_self", {"name": "New"})
-        assert res.isError is True
+        res = await session.call_tool("update_user_self", {"name": "New"}, raise_on_error=False)
+        assert res.is_error
         assert "disabled" in res.content[0].text.lower()

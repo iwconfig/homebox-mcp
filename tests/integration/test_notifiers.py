@@ -33,22 +33,22 @@ async def test_notifier_lifecycle(server_session, local_http_server):
     webhook_url = f"generic+{local_http_server}/"
 
     # Create Notifier
-    res = await server_session.call_tool("create_notifier", {"name": n_name, "url": webhook_url})
-    assert not getattr(res, "isError", False)
+    res = await server_session.call_tool("create_notifier", {"name": n_name, "url": webhook_url}, raise_on_error=False)
+    assert not res.is_error
     n_id = get_id(res)
 
     # Update Notifier
-    res = await server_session.call_tool("update_notifier", {"id": n_id, "is_active": False})
-    assert not getattr(res, "isError", False)
+    res = await server_session.call_tool("update_notifier", {"id": n_id, "is_active": False}, raise_on_error=False)
+    assert not res.is_error
 
     # Test Notifier Signal
-    res = await server_session.call_tool("test_notifier", {"url": webhook_url})
-    assert not getattr(res, "isError", False)
+    res = await server_session.call_tool("test_notifier", {"url": webhook_url}, raise_on_error=False)
+    assert not res.is_error
 
     # List Notifiers
-    res = await server_session.call_tool("list_notifiers", {})
-    assert not getattr(res, "isError", False)
+    res = await server_session.call_tool("list_notifiers", {}, raise_on_error=False)
+    assert not res.is_error
 
     # Delete Notifier
-    res = await server_session.call_tool("delete_notifier", {"id": n_id})
-    assert not getattr(res, "isError", False)
+    res = await server_session.call_tool("delete_notifier", {"id": n_id}, raise_on_error=False)
+    assert not res.is_error

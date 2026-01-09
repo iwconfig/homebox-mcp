@@ -2,8 +2,10 @@ import os
 
 import pytest
 from dotenv import load_dotenv
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
+from fastmcp import Client
+from fastmcp.client.transports import StdioTransport
+
+from homebox_mcp.server import mcp
 
 load_dotenv(override=True)
 
@@ -11,6 +13,13 @@ load_dotenv(override=True)
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
+
+
+@pytest.fixture
+async def fastmcp_client():
+    """Fixture to provide an in-memory FastMCP Client for unit testing."""
+    async with Client(mcp) as client:
+        yield client
 
 
 @pytest.fixture
@@ -23,12 +32,13 @@ async def server_session():
     if not env.get("HOMEBOX_API_KEY") and not env.get("HOMEBOX_USERNAME"):
         pytest.skip("No Homebox credentials found in environment")
 
-    server_params = StdioServerParameters(command=".venv/bin/python", args=["-m", "homebox_mcp.server"], env=env)
-
-    async with stdio_client(server_params) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            yield session
+    transport = StdioTransport(
+        command=".venv/bin/python",
+        args=["-m", "homebox_mcp.server"],
+        env=env
+    )
+    async with Client(transport=transport) as client:
+        yield client
 
 
 @pytest.fixture(scope="session")

@@ -159,12 +159,7 @@ async def handle_finalize_processed_item(
                 }
             )
 
-            # Convert numeric fields to strings and initialize required dates/strings
-            if "purchasePrice" in update_payload:
-                update_payload["purchasePrice"] = str(update_payload["purchasePrice"])
-            if "soldPrice" in update_payload:
-                update_payload["soldPrice"] = str(update_payload["soldPrice"])
-
+            # Ensure mandatory date and string fields are present
             for key in ["purchaseFrom", "soldTo", "soldNotes", "warrantyDetails"]:
                 if key not in update_payload:
                     update_payload[key] = ""
@@ -208,12 +203,6 @@ async def handle_finalize_processed_item(
 
         if label_ids is not None:
             update_payload["labelIds"] = label_ids
-
-        # Convert numeric fields to strings
-        if "purchasePrice" in update_payload:
-            update_payload["purchasePrice"] = str(update_payload["purchasePrice"])
-        if "soldPrice" in update_payload:
-            update_payload["soldPrice"] = str(update_payload["soldPrice"])
 
         # Ensure mandatory date and string fields are present
         for key in ["purchaseFrom", "soldTo", "soldNotes", "warrantyDetails"]:
@@ -350,12 +339,7 @@ async def handle_split_item_from_image(
                 }
             )
 
-            # Convert numeric fields to strings and initialize required dates/strings
-            if "purchasePrice" in update_payload:
-                update_payload["purchasePrice"] = str(update_payload["purchasePrice"])
-            if "soldPrice" in update_payload:
-                update_payload["soldPrice"] = str(update_payload["soldPrice"])
-
+            # Ensure mandatory date and string fields are present
             for key in ["purchaseFrom", "soldTo", "soldNotes", "warrantyDetails"]:
                 if key not in update_payload:
                     update_payload[key] = ""

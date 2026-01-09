@@ -5,8 +5,8 @@ import re
 import string
 
 import pytest
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
+from fastmcp import Client
+from fastmcp.client.transports import StdioTransport
 
 
 def random_string(length=8):
@@ -46,20 +46,22 @@ async def run_scenario_session(env_vars):
     env["HOMEBOX_ALLOW_USER_DELETION"] = "true"
     env.update(env_vars)
 
-    server_params = StdioServerParameters(command=".venv/bin/python", args=["-m", "homebox_mcp.server"], env=env)
+    transport = StdioTransport(
+        command=".venv/bin/python",
+        args=["-m", "homebox_mcp.server"],
+        env=env
+    )
 
-    async with stdio_client(server_params) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            yield session
+    async with Client(transport=transport) as client:
+        yield client
 
 
 @pytest.mark.anyio
 async def test_readonly_resource_type():
     env_vars = {"HOMEBOX_READONLY_RESOURCES": "locations"}
     async for session in run_scenario_session(env_vars):
-        res = await session.call_tool("create_location", {"name": "ReadOnlyLoc"})
-        assert res.isError is True
+        res = await session.call_tool("create_location", {"name": "ReadOnlyLoc"}, raise_on_error=False)
+        assert res.is_error
         assert "disabled" in res.content[0].text.lower()
 
 
@@ -68,17 +70,17 @@ async def test_non_deletable_resource_type():
     env_vars = {"HOMEBOX_NON_DELETABLE_RESOURCES": "labels"}
     async for session in run_scenario_session(env_vars):
         # Create (Allowed)
-        res = await session.call_tool("create_label", {"name": f"Lbl_{random_string()}"})
-        assert not getattr(res, "isError", False)
+        res = await session.call_tool("create_label", {"name": f"Lbl_{random_string()}"}, raise_on_error=False)
+        assert not res.is_error
         lbl_id = get_id(res)
 
         # Update (Allowed)
-        res = await session.call_tool("update_label", {"id": lbl_id, "color": "#000000"})
-        assert not getattr(res, "isError", False)
+        res = await session.call_tool("update_label", {"id": lbl_id, "color": "#000000"}, raise_on_error=False)
+        assert not res.is_error
 
         # Delete (Blocked)
-        res = await session.call_tool("delete_label", {"id": lbl_id})
-        assert res.isError is True
+        res = await session.call_tool("delete_label", {"id": lbl_id}, raise_on_error=False)
+        assert res.is_error
         assert "disabled" in res.content[0].text.lower()
 
 
@@ -87,9 +89,13 @@ async def test_protected_id():
     # Pre-setup: Create Item to get an ID
     item_id = None
     async for session in run_scenario_session({}):
-        l_res = await session.call_tool("create_location", {"name": "GuardrailLoc"})
+        l_res = await session.call_tool(
+            "create_location", {"name": "GuardrailLoc"}, raise_on_error=False
+        )
         l_id = get_id(l_res)
-        i_res = await session.call_tool("create_item", {"name": "ProtectedItem", "location_id": l_id})
+        i_res = await session.call_tool(
+            "create_item", {"name": "ProtectedItem", "location_id": l_id}, raise_on_error=False
+        )
         item_id = get_id(i_res)
 
     assert item_id is not None
@@ -97,13 +103,13 @@ async def test_protected_id():
     env_vars = {"HOMEBOX_PROTECTED_IDS": item_id}
     async for session in run_scenario_session(env_vars):
         # Update (Should Fail)
-        res = await session.call_tool("update_item", {"id": item_id, "notes": "Hacked"})
-        assert res.isError is True
+        res = await session.call_tool("update_item", {"id": item_id, "notes": "Hacked"}, raise_on_error=False)
+        assert res.is_error
         assert "disabled" in res.content[0].text.lower()
 
         # Delete (Should Fail)
-        res = await session.call_tool("delete_item", {"id": item_id})
-        assert res.isError is True
+        res = await session.call_tool("delete_item", {"id": item_id}, raise_on_error=False)
+        assert res.is_error
         assert "disabled" in res.content[0].text.lower()
 
 
@@ -112,9 +118,13 @@ async def test_non_deletable_id():
     # Pre-setup: Create Item
     item_id = None
     async for session in run_scenario_session({}):
-        l_res = await session.call_tool("create_location", {"name": "GuardrailLoc2"})
+        l_res = await session.call_tool(
+            "create_location", {"name": "GuardrailLoc2"}, raise_on_error=False
+        )
         l_id = get_id(l_res)
-        i_res = await session.call_tool("create_item", {"name": "NonDelItem", "location_id": l_id})
+        i_res = await session.call_tool(
+            "create_item", {"name": "NonDelItem", "location_id": l_id}, raise_on_error=False
+        )
         item_id = get_id(i_res)
 
     assert item_id is not None
@@ -122,12 +132,12 @@ async def test_non_deletable_id():
     env_vars = {"HOMEBOX_NON_DELETABLE_IDS": item_id}
     async for session in run_scenario_session(env_vars):
         # Update (Should Succeed)
-        res = await session.call_tool("update_item", {"id": item_id, "notes": "SafeUpdate"})
-        assert not getattr(res, "isError", False)
+        res = await session.call_tool("update_item", {"id": item_id, "notes": "SafeUpdate"}, raise_on_error=False)
+        assert not res.is_error
 
         # Delete (Should Fail)
-        res = await session.call_tool("delete_item", {"id": item_id})
-        assert res.isError is True
+        res = await session.call_tool("delete_item", {"id": item_id}, raise_on_error=False)
+        assert res.is_error
         assert "disabled" in res.content[0].text.lower()
 
 
@@ -135,8 +145,8 @@ async def test_non_deletable_id():
 async def test_wipe_inventory_disabled_by_default():
     """Test that wipe_inventory is disabled by default."""
     async for session in run_scenario_session({}):
-        res = await session.call_tool("wipe_inventory", {})
-        assert res.isError is True
+        res = await session.call_tool("wipe_inventory", {}, raise_on_error=False)
+        assert res.is_error
         assert "disabled" in res.content[0].text.lower()
 
 
@@ -146,8 +156,8 @@ async def test_wipe_inventory_blocked_by_non_deletable():
     env_vars = {"HOMEBOX_ALLOW_WIPE_INVENTORY": "true", "HOMEBOX_NON_DELETABLE_RESOURCES": "inventory"}
 
     async for session in run_scenario_session(env_vars):
-        res = await session.call_tool("wipe_inventory", {})
-        assert res.isError is True
+        res = await session.call_tool("wipe_inventory", {}, raise_on_error=False)
+        assert res.is_error
         assert "disabled for resource type 'inventory'" in res.content[0].text
 
 
@@ -156,8 +166,8 @@ async def test_wipe_inventory_blocked_by_readonly():
     """Test that wipe_inventory is blocked by readonly guardrails even if enabled via safety switch."""
     env_vars = {"HOMEBOX_ALLOW_WIPE_INVENTORY": "true", "HOMEBOX_READONLY_RESOURCES": "inventory"}
     async for session in run_scenario_session(env_vars):
-        res = await session.call_tool("wipe_inventory", {})
-        assert res.isError is True
+        res = await session.call_tool("wipe_inventory", {}, raise_on_error=False)
+        assert res.is_error
         assert "disabled for resource type 'inventory'" in res.content[0].text
 
 
@@ -174,35 +184,39 @@ async def test_wipe_inventory_full_cycle():
     async for session in run_scenario_session(env_vars):
         # 1. Register a temporary user
         reg_res = await session.call_tool(
-            "register_user", {"name": test_name, "email": test_email, "password": test_pass}
+            "register_user",
+            {"name": test_name, "email": test_email, "password": test_pass},
+            raise_on_error=False,
         )
-        if getattr(reg_res, "isError", False):
+        if reg_res.is_error:
             if "disabled" in reg_res.content[0].text.lower() or "403" in str(reg_res.content):
                 pytest.skip("User registration is disabled on this Homebox instance.")
             return
 
         try:
             # 2. Login as the new user
-            await session.call_tool("login_user", {"username": test_email, "password": test_pass})
+            await session.call_tool(
+            "login_user", {"username": test_email, "password": test_pass}, raise_on_error=False
+        )
 
             # 3. Create some dummy data
-            l_res = await session.call_tool("create_location", {"name": "WipeTestLoc"})
+            l_res = await session.call_tool("create_location", {"name": "WipeTestLoc"}, raise_on_error=False)
             l_id = get_id(l_res)
-            await session.call_tool("create_item", {"name": "WipeItem", "location_id": l_id})
+            await session.call_tool("create_item", {"name": "WipeItem", "location_id": l_id}, raise_on_error=False)
 
             # 4. Wipe Inventory
-            wipe_res = await session.call_tool("wipe_inventory", {"wipe_locations": True})
-            if getattr(wipe_res, "isError", False) and "404" in wipe_res.content[0].text:
+            wipe_res = await session.call_tool("wipe_inventory", {"wipe_locations": True}, raise_on_error=False)
+            if wipe_res.is_error and "404" in wipe_res.content[0].text:
                 pytest.skip("wipe-inventory endpoint not supported by this Homebox version.")
-            assert not getattr(wipe_res, "isError", False)
+            assert not wipe_res.is_error
 
             # 5. Verify it's gone
-            items_res = await session.call_tool("list_items", {})
+            items_res = await session.call_tool("list_items", {}, raise_on_error=False)
             assert '"total": 0' in items_res.content[0].text or '"total":0' in items_res.content[0].text
 
         finally:
             # 6. Cleanup
-            await session.call_tool("delete_user_self", {})
+            await session.call_tool("delete_user_self", {}, raise_on_error=False)
 
 
 @pytest.mark.anyio
@@ -217,12 +231,18 @@ async def test_wipe_inventory_blocked_for_protected_user():
 
     async for session in run_scenario_session(env_vars):
         # 1. Register
-        await session.call_tool("register_user", {"name": test_name, "email": test_email, "password": test_pass})
+        await session.call_tool(
+            "register_user",
+            {"name": test_name, "email": test_email, "password": test_pass},
+            raise_on_error=False,
+        )
         # 2. Login
-        await session.call_tool("login_user", {"username": test_email, "password": test_pass})
+        await session.call_tool(
+            "login_user", {"username": test_email, "password": test_pass}, raise_on_error=False
+        )
 
         # 3. Wipe should fail because user is protected
-        res = await session.call_tool("wipe_inventory", {})
-        assert res.isError is True
+        res = await session.call_tool("wipe_inventory", {}, raise_on_error=False)
+        assert res.is_error
         msg = res.content[0].text.lower()
         assert "disabled for user" in msg or "disabled for protected user" in msg
