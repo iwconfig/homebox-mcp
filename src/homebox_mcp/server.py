@@ -18,6 +18,7 @@ logger = logging.getLogger("homebox-mcp")
 # FastMCP 2.0 tools can also access this via lifespan if needed
 client = HomeboxClient()
 
+
 @asynccontextmanager
 async def lifespan(server: FastMCP) -> AsyncIterator[dict]:
     """
@@ -31,6 +32,7 @@ async def lifespan(server: FastMCP) -> AsyncIterator[dict]:
         # Close the underlying HTTP sessions
         await client.close()
 
+
 # Initialize FastMCP 2.0
 # We provide custom instructions and a lifespan handler
 mcp = FastMCP(
@@ -42,6 +44,7 @@ mcp = FastMCP(
 # Register all tools and prompts with the server instance
 register_all_tools(mcp, client)
 register_all_prompts(mcp)
+
 
 def main():
     """
@@ -67,6 +70,7 @@ def main():
     else:
         # Default to standard I/O transport
         mcp.run(transport="stdio")
+
 
 if __name__ == "__main__":
     main()

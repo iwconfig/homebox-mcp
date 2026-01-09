@@ -1,43 +1,46 @@
-import pytest
+import json
 import re
 import uuid
-import json
+
+import pytest
+
 
 def get_id(res):
     if hasattr(res, "content"):
         text = res.content[0].text
     else:
         text = res
-        
-    if not text: return None
+
+    if not text:
+        return None
     # Try parsing as JSON first
     try:
         data = json.loads(text)
         if isinstance(data, dict):
             return data.get("id")
-    except:
+    except (json.JSONDecodeError, AttributeError):
         pass
-        
+
     m = re.search(r'"id":\s*"([a-f0-9\-]+)"', text)
-    if m: return m.group(1)
-    m = re.search(r'ID: ([a-f0-9\-]+)', text)
-    if m: return m.group(1)
+    if m:
+        return m.group(1)
+    m = re.search(r"ID: ([a-f0-9\-]+)", text)
+    if m:
+        return m.group(1)
     return None
+
 
 @pytest.mark.anyio
 async def test_item_lifecycle(server_session):
     # Setup: need a location
     loc_res = await server_session.call_tool("create_location", {"name": "Item-Test-Loc"})
     loc_id = get_id(loc_res)
-    
+
     # Create item
     item_name = f"Test-Item-{uuid.uuid4().hex[:6]}"
-    res = await server_session.call_tool("create_item", {
-        "name": item_name, 
-        "location_id": loc_id,
-        "notes": "Initial Notes",
-        "quantity": 5
-    })
+    res = await server_session.call_tool(
+        "create_item", {"name": item_name, "location_id": loc_id, "notes": "Initial Notes", "quantity": 5}
+    )
     assert not getattr(res, "isError", False)
     item_id = get_id(res)
     assert item_id is not None
@@ -82,6 +85,7 @@ async def test_item_lifecycle(server_session):
     await server_session.call_tool("delete_item", {"id": dup_id})
     await server_session.call_tool("delete_location", {"id": loc_id})
 
+
 @pytest.mark.anyio
 async def test_item_attachments(server_session):
     # Setup
@@ -92,31 +96,24 @@ async def test_item_attachments(server_session):
 
     # Upload attachment (Base64)
     b64_data = "data:text/plain;base64,VGVzdCBDb250ZW50"
-    res = await server_session.call_tool("upload_item_attachment", {
-        "item_id": item_id,
-        "file_path": b64_data,
-        "attachment_type": "attachment"
-    })
+    res = await server_session.call_tool(
+        "upload_item_attachment", {"item_id": item_id, "file_path": b64_data, "attachment_type": "attachment"}
+    )
     assert not getattr(res, "isError", False)
-    
+
     # Fetch item to find the attachment ID
     item_res = await server_session.call_tool("get_item", {"id": item_id})
     data = json.loads(item_res.content[0].text)
     att_id = data["attachments"][-1]["id"]
 
     # Update attachment
-    res = await server_session.call_tool("update_item_attachment", {
-        "id": item_id,
-        "attachment_id": att_id,
-        "primary": True
-    })
+    res = await server_session.call_tool(
+        "update_item_attachment", {"id": item_id, "attachment_id": att_id, "primary": True}
+    )
     assert not getattr(res, "isError", False)
 
     # Get attachment token
-    res = await server_session.call_tool("get_item_attachment_token", {
-        "id": item_id,
-        "attachment_id": att_id
-    })
+    res = await server_session.call_tool("get_item_attachment_token", {"id": item_id, "attachment_id": att_id})
     assert not getattr(res, "isError", False)
 
     # Get item image
@@ -125,15 +122,13 @@ async def test_item_attachments(server_session):
     assert res.content[0].type == "image"
 
     # Delete attachment
-    res = await server_session.call_tool("delete_item_attachment", {
-        "id": item_id,
-        "attachment_id": att_id
-    })
+    res = await server_session.call_tool("delete_item_attachment", {"id": item_id, "attachment_id": att_id})
     assert not getattr(res, "isError", False)
 
     # Cleanup
     await server_session.call_tool("delete_item", {"id": item_id})
     await server_session.call_tool("delete_location", {"id": loc_id})
+
 
 @pytest.mark.anyio
 async def test_item_fields(server_session):
@@ -144,6 +139,7 @@ async def test_item_fields(server_session):
     res = await server_session.call_tool("get_item_field_values", {"field": "name"})
     assert not getattr(res, "isError", False)
 
+
 @pytest.mark.anyio
 async def test_item_export_import(server_session):
     # Export/Import
@@ -152,6 +148,7 @@ async def test_item_export_import(server_session):
 
     res = await server_session.call_tool("import_items", {"file_path": "/non/existent/file.csv"})
     assert res.isError is True
+
 
 @pytest.mark.anyio
 async def test_item_import_success(server_session, tmp_path):
@@ -163,15 +160,16 @@ async def test_item_import_success(server_session, tmp_path):
     # Create a dummy CSV file with correct HB. prefixes
     csv_file = tmp_path / "inventory.csv"
     csv_file.write_text(f"HB.name,HB.quantity,HB.location\nTestImportItem,5,{loc_name}")
-    
+
     # Run the tool with the real path
     res = await server_session.call_tool("import_items", {"file_path": str(csv_file)})
     assert not getattr(res, "isError", False)
     assert "imported successfully" in res.content[0].text
-    
+
     # Verify item was created
     list_res = await server_session.call_tool("list_items", {"q": "TestImportItem"})
     assert "TestImportItem" in list_res.content[0].text
+
 
 @pytest.mark.anyio
 async def test_item_maintenance_integration(server_session):
@@ -181,19 +179,18 @@ async def test_item_maintenance_integration(server_session):
     item_res = await server_session.call_tool("create_item", {"name": "Maint-Test-Item", "location_id": loc_id})
     item_id = get_id(item_res)
 
-    res = await server_session.call_tool("create_item_maintenance", {
-        "id": item_id,
-        "name": "Annual Service",
-        "cost": 150.50
-    })
+    res = await server_session.call_tool(
+        "create_item_maintenance", {"id": item_id, "name": "Annual Service", "cost": 150.50}
+    )
     assert not getattr(res, "isError", False)
-    
+
     res = await server_session.call_tool("get_item_maintenance", {"id": item_id})
     assert not getattr(res, "isError", False)
     assert "Annual Service" in res.content[0].text
 
     await server_session.call_tool("delete_item", {"id": item_id})
     await server_session.call_tool("delete_location", {"id": loc_id})
+
 
 @pytest.mark.anyio
 async def test_list_items_pagination(server_session):

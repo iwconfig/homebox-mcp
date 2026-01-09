@@ -1,26 +1,32 @@
-import pytest
-import re
 import json
+import re
+
+import pytest
+
 
 def get_id(res):
     if hasattr(res, "content"):
         text = res.content[0].text
     else:
         text = res
-        
-    if not text: return None
+
+    if not text:
+        return None
     try:
         data = json.loads(text)
         if isinstance(data, dict):
             return data.get("id")
-    except:
+    except (json.JSONDecodeError, AttributeError):
         pass
-        
+
     m = re.search(r'"id":\s*"([a-f0-9\-]+)"', text)
-    if m: return m.group(1)
-    m = re.search(r'ID: ([a-f0-9\-]+)', text)
-    if m: return m.group(1)
+    if m:
+        return m.group(1)
+    m = re.search(r"ID: ([a-f0-9\-]+)", text)
+    if m:
+        return m.group(1)
     return None
+
 
 @pytest.mark.anyio
 async def test_misc_tools(server_session):
@@ -41,6 +47,7 @@ async def test_misc_tools(server_session):
     # Barcode Search
     res = await server_session.call_tool("search_product_by_barcode", {"barcode": "3017620422003"})
     assert not getattr(res, "isError", False)
+
 
 @pytest.mark.anyio
 async def test_label_images_integration(server_session):

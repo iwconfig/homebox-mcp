@@ -1,9 +1,10 @@
 import pytest
 
+
 @pytest.mark.anyio
 async def test_actions(server_session):
     # These actions usually return a success message or JSON status
-    
+
     res = await server_session.call_tool("create_missing_thumbnails", {})
     assert not getattr(res, "isError", False)
 

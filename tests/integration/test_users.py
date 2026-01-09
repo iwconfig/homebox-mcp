@@ -1,13 +1,16 @@
-import pytest
-import uuid
+import os
 import random
 import string
-import os
+import uuid
+
+import pytest
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+
 def random_string(length=8):
-    return ''.join(random.choices(string.ascii_lowercase, k=length))
+    return "".join(random.choices(string.ascii_lowercase, k=length))
+
 
 async def run_user_test_session():
     env = os.environ.copy()
@@ -16,20 +19,17 @@ async def run_user_test_session():
     # Enable safety switches for the lifecycle test
     env["HOMEBOX_ALLOW_USER_REGISTRATION"] = "true"
     env["HOMEBOX_ALLOW_USER_DELETION"] = "true"
-    
+
     if not env.get("HOMEBOX_API_KEY") and not env.get("HOMEBOX_USERNAME"):
         pytest.skip("No Homebox credentials found in environment")
 
-    server_params = StdioServerParameters(
-        command=".venv/bin/python",
-        args=["-m", "homebox_mcp.server"],
-        env=env
-    )
+    server_params = StdioServerParameters(command=".venv/bin/python", args=["-m", "homebox_mcp.server"], env=env)
 
     async with stdio_client(server_params) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
             yield session
+
 
 @pytest.mark.anyio
 async def test_user_lifecycle():
@@ -42,19 +42,14 @@ async def test_user_lifecycle():
         new_name = "Test User"
         new_email = f"test-{uuid.uuid4().hex[:8]}@example.com"
         new_pass = "Password123!"
-        
-        res = await server_session.call_tool("register_user", {
-            "name": new_name,
-            "email": new_email,
-            "password": new_pass
-        })
+
+        res = await server_session.call_tool(
+            "register_user", {"name": new_name, "email": new_email, "password": new_pass}
+        )
         assert not getattr(res, "isError", False)
 
         # 3. Login
-        res = await server_session.call_tool("login_user", {
-            "username": new_email,
-            "password": new_pass
-        })
+        res = await server_session.call_tool("login_user", {"username": new_email, "password": new_pass})
         assert not getattr(res, "isError", False)
         assert "Logged in" in res.content[0].text
 
@@ -65,10 +60,7 @@ async def test_user_lifecycle():
         assert updated_name in res.content[0].text
 
         # 5. Change Password
-        res = await server_session.call_tool("change_password", {
-            "current": new_pass,
-            "new": "NewPassword123!"
-        })
+        res = await server_session.call_tool("change_password", {"current": new_pass, "new": "NewPassword123!"})
         assert not getattr(res, "isError", False)
 
         # 6. Delete User Self

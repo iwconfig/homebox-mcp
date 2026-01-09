@@ -7,9 +7,11 @@ from ..guardrails import protect_resource
 
 # --- Tool Handlers ---
 
+
 async def handle_list_templates(client: HomeboxClient) -> list[dict]:
     """Get All Item Templates."""
     return await client.request("GET", "templates")
+
 
 @protect_resource(resource_type="templates", action="create")
 async def handle_create_template(
@@ -29,7 +31,7 @@ async def handle_create_template(
     default_warranty_details: str | None = None,
     include_purchase_fields: bool = False,
     include_sold_fields: bool = False,
-    include_warranty_fields: bool = False
+    include_warranty_fields: bool = False,
 ) -> dict:
     """Create a new item template for faster data entry."""
     payload = {"name": name}
@@ -52,25 +54,26 @@ async def handle_create_template(
     if default_label_ids:
         payload["defaultLabelIds"] = default_label_ids
 
-    payload.update({
-        "defaultInsured": default_insured,
-        "defaultLifetimeWarranty": default_lifetime_warranty
-    })
+    payload.update({"defaultInsured": default_insured, "defaultLifetimeWarranty": default_lifetime_warranty})
 
     if default_warranty_details:
         payload["defaultWarrantyDetails"] = default_warranty_details
 
-    payload.update({
-        "includePurchaseFields": include_purchase_fields,
-        "includeSoldFields": include_sold_fields,
-        "includeWarrantyFields": include_warranty_fields
-    })
+    payload.update(
+        {
+            "includePurchaseFields": include_purchase_fields,
+            "includeSoldFields": include_sold_fields,
+            "includeWarrantyFields": include_warranty_fields,
+        }
+    )
 
     return await client.request("POST", "templates", json=payload)
+
 
 async def handle_get_template(client: HomeboxClient, id: str) -> dict:
     """Get full details for a specific template by ID."""
     return await client.request("GET", f"templates/{id}")
+
 
 @protect_resource(resource_type="templates", action="update")
 async def handle_update_template(
@@ -91,7 +94,7 @@ async def handle_update_template(
     default_warranty_details: str | None = None,
     include_purchase_fields: bool | None = None,
     include_sold_fields: bool | None = None,
-    include_warranty_fields: bool | None = None
+    include_warranty_fields: bool | None = None,
 ) -> dict:
     """Update an existing template."""
     existing = await client.request("GET", f"templates/{id}")
@@ -132,11 +135,13 @@ async def handle_update_template(
 
     return await client.request("PUT", f"templates/{id}", json=payload)
 
+
 @protect_resource(resource_type="templates", action="delete")
 async def handle_delete_template(client: HomeboxClient, id: str) -> str:
     """Delete a template by ID."""
     await client.request("DELETE", f"templates/{id}")
     return f"Deleted Template {id}"
+
 
 async def handle_create_item_from_template(
     client: HomeboxClient,
@@ -145,14 +150,10 @@ async def handle_create_item_from_template(
     location_id: str,
     quantity: int = 1,
     description: str | None = None,
-    label_ids: list[str] | None = None
+    label_ids: list[str] | None = None,
 ) -> dict:
     """Create a new inventory item using a template as a base."""
-    payload = {
-        "name": name,
-        "locationId": location_id,
-        "quantity": quantity
-    }
+    payload = {"name": name, "locationId": location_id, "quantity": quantity}
     if description:
         payload["description"] = description
     if label_ids:
@@ -160,7 +161,9 @@ async def handle_create_item_from_template(
 
     return await client.request("POST", f"templates/{id}/create-item", json=payload)
 
+
 # --- Registration ---
+
 
 def register_templates_tools(mcp: FastMCP, client: HomeboxClient):
     @mcp.tool(output_schema={"type": "object"})
@@ -186,26 +189,31 @@ def register_templates_tools(mcp: FastMCP, client: HomeboxClient):
         default_warranty_details: Annotated[str | None, "Default warranty details"] = None,
         include_purchase_fields: Annotated[bool, "Whether to show purchase fields"] = False,
         include_sold_fields: Annotated[bool, "Whether to show sold fields"] = False,
-        include_warranty_fields: Annotated[bool, "Whether to show warranty fields"] = False
+        include_warranty_fields: Annotated[bool, "Whether to show warranty fields"] = False,
     ) -> dict:
         """Create Item Template"""
         return await handle_create_template(
-            client, name=name, description=description, notes=notes,
-            default_name=default_name, default_description=default_description,
-            default_quantity=default_quantity, default_manufacturer=default_manufacturer,
-            default_model_number=default_model_number, default_location_id=default_location_id,
-            default_label_ids=default_label_ids, default_insured=default_insured,
+            client,
+            name=name,
+            description=description,
+            notes=notes,
+            default_name=default_name,
+            default_description=default_description,
+            default_quantity=default_quantity,
+            default_manufacturer=default_manufacturer,
+            default_model_number=default_model_number,
+            default_location_id=default_location_id,
+            default_label_ids=default_label_ids,
+            default_insured=default_insured,
             default_lifetime_warranty=default_lifetime_warranty,
             default_warranty_details=default_warranty_details,
             include_purchase_fields=include_purchase_fields,
             include_sold_fields=include_sold_fields,
-            include_warranty_fields=include_warranty_fields
+            include_warranty_fields=include_warranty_fields,
         )
 
     @mcp.tool(output_schema={"type": "object"})
-    async def get_template(
-        id: Annotated[str, "ID of the template"]
-    ) -> dict:
+    async def get_template(id: Annotated[str, "ID of the template"]) -> dict:
         """Get Item Template"""
         return await handle_get_template(client, id=id)
 
@@ -227,26 +235,32 @@ def register_templates_tools(mcp: FastMCP, client: HomeboxClient):
         default_warranty_details: Annotated[str | None, "New default warranty details"] = None,
         include_purchase_fields: Annotated[bool | None, "New purchase fields visibility"] = None,
         include_sold_fields: Annotated[bool | None, "New sold fields visibility"] = None,
-        include_warranty_fields: Annotated[bool | None, "New warranty fields visibility"] = None
+        include_warranty_fields: Annotated[bool | None, "New warranty fields visibility"] = None,
     ) -> dict:
         """Update Item Template"""
         return await handle_update_template(
-            client, id=id, name=name, description=description, notes=notes,
-            default_name=default_name, default_description=default_description,
-            default_quantity=default_quantity, default_manufacturer=default_manufacturer,
-            default_model_number=default_model_number, default_location_id=default_location_id,
-            default_label_ids=default_label_ids, default_insured=default_insured,
+            client,
+            id=id,
+            name=name,
+            description=description,
+            notes=notes,
+            default_name=default_name,
+            default_description=default_description,
+            default_quantity=default_quantity,
+            default_manufacturer=default_manufacturer,
+            default_model_number=default_model_number,
+            default_location_id=default_location_id,
+            default_label_ids=default_label_ids,
+            default_insured=default_insured,
             default_lifetime_warranty=default_lifetime_warranty,
             default_warranty_details=default_warranty_details,
             include_purchase_fields=include_purchase_fields,
             include_sold_fields=include_sold_fields,
-            include_warranty_fields=include_warranty_fields
+            include_warranty_fields=include_warranty_fields,
         )
 
     @mcp.tool()
-    async def delete_template(
-        id: Annotated[str, "ID of the template"]
-    ) -> str:
+    async def delete_template(id: Annotated[str, "ID of the template"]) -> str:
         """Delete Item Template"""
         return await handle_delete_template(client, id=id)
 
@@ -257,10 +271,15 @@ def register_templates_tools(mcp: FastMCP, client: HomeboxClient):
         location_id: Annotated[str, "ID of the location"],
         quantity: Annotated[int, "Quantity of the new item"] = 1,
         description: Annotated[str | None, "Description for the new item"] = None,
-        label_ids: Annotated[list[str] | None, "List of label UUIDs"] = None
+        label_ids: Annotated[list[str] | None, "List of label UUIDs"] = None,
     ) -> dict:
         """Create Item from Template"""
         return await handle_create_item_from_template(
-            client, id=id, name=name, location_id=location_id,
-            quantity=quantity, description=description, label_ids=label_ids
+            client,
+            id=id,
+            name=name,
+            location_id=location_id,
+            quantity=quantity,
+            description=description,
+            label_ids=label_ids,
         )

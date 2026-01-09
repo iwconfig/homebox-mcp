@@ -1,24 +1,29 @@
-import pytest
-import re
 import json
+import re
+
+import pytest
+
 
 def get_id(res):
     if hasattr(res, "content"):
         text = res.content[0].text
     else:
         text = res
-        
-    if not text: return None
+
+    if not text:
+        return None
     try:
         data = json.loads(text)
         if isinstance(data, dict):
             return data.get("id")
-    except:
+    except (json.JSONDecodeError, AttributeError):
         pass
-        
+
     m = re.search(r'"id":\s*"([a-f0-9\-]+)"', text)
-    if m: return m.group(1)
+    if m:
+        return m.group(1)
     return None
+
 
 @pytest.mark.anyio
 async def test_maintenance_lifecycle(server_session):
@@ -29,13 +34,11 @@ async def test_maintenance_lifecycle(server_session):
     item_id = get_id(item_res)
 
     # 1. Create maintenance
-    res = await server_session.call_tool("create_item_maintenance", {
-        "id": item_id,
-        "name": "Periodic Check",
-        "cost": 50.0
-    })
+    res = await server_session.call_tool(
+        "create_item_maintenance", {"id": item_id, "name": "Periodic Check", "cost": 50.0}
+    )
     assert not getattr(res, "isError", False)
-    
+
     m_id = get_id(res)
     if m_id:
         # 2. Get item maintenance
@@ -44,11 +47,9 @@ async def test_maintenance_lifecycle(server_session):
         assert "Periodic Check" in res.content[0].text
 
         # 3. Update maintenance entry
-        res = await server_session.call_tool("update_maintenance_entry", {
-            "id": m_id,
-            "name": "Updated Check",
-            "cost": 75.0
-        })
+        res = await server_session.call_tool(
+            "update_maintenance_entry", {"id": m_id, "name": "Updated Check", "cost": 75.0}
+        )
         assert not getattr(res, "isError", False)
         assert "Updated Check" in res.content[0].text
 

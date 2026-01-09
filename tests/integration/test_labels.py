@@ -1,12 +1,17 @@
-import pytest
 import re
 import uuid
 
+import pytest
+
+
 def get_id(text):
-    if not text: return None
+    if not text:
+        return None
     m = re.search(r'"id":\s*"([a-f0-9\-]+)"', text)
-    if m: return m.group(1)
+    if m:
+        return m.group(1)
     return None
+
 
 @pytest.mark.anyio
 async def test_label_lifecycle(server_session):

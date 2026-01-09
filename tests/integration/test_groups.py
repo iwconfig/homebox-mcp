@@ -1,5 +1,6 @@
 import pytest
 
+
 @pytest.mark.anyio
 async def test_group_tools(server_session):
     # Get Group
@@ -30,6 +31,7 @@ async def test_group_tools(server_session):
     res = await server_session.call_tool("create_group_invitation", {"uses": 1})
     assert not getattr(res, "isError", False)
     assert "token" in res.content[0].text.lower()
+
 
 @pytest.mark.anyio
 async def test_export_bom_integration(server_session):

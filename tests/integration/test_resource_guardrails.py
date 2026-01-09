@@ -1,34 +1,41 @@
-import pytest
-import os
-import re
-import random
-import string
 import json
+import os
+import random
+import re
+import string
+
+import pytest
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+
 def random_string(length=8):
-    return ''.join(random.choices(string.ascii_lowercase, k=length))
+    return "".join(random.choices(string.ascii_lowercase, k=length))
+
 
 def get_id(res):
     if hasattr(res, "content"):
         text = res.content[0].text
     else:
         text = res
-        
-    if not text: return None
+
+    if not text:
+        return None
     try:
         data = json.loads(text)
         if isinstance(data, dict):
             return data.get("id")
-    except:
+    except (json.JSONDecodeError, AttributeError):
         pass
-        
+
     m = re.search(r'"id":\s*"([a-f0-9\-]+)"', text)
-    if m: return m.group(1)
-    m = re.search(r'ID: ([a-f0-9\-]+)', text)
-    if m: return m.group(1)
+    if m:
+        return m.group(1)
+    m = re.search(r"ID: ([a-f0-9\-]+)", text)
+    if m:
+        return m.group(1)
     return None
+
 
 async def run_scenario_session(env_vars):
     env = os.environ.copy()
@@ -39,11 +46,7 @@ async def run_scenario_session(env_vars):
     env["HOMEBOX_ALLOW_USER_DELETION"] = "true"
     env.update(env_vars)
 
-    server_params = StdioServerParameters(
-        command=".venv/bin/python", 
-        args=["-m", "homebox_mcp.server"], 
-        env=env
-    )
+    server_params = StdioServerParameters(command=".venv/bin/python", args=["-m", "homebox_mcp.server"], env=env)
 
     async with stdio_client(server_params) as (read, write):
         async with ClientSession(read, write) as session:
@@ -59,6 +62,7 @@ async def test_readonly_resource_type():
         assert res.isError is True
         assert "disabled" in res.content[0].text.lower()
 
+
 @pytest.mark.anyio
 async def test_non_deletable_resource_type():
     env_vars = {"HOMEBOX_NON_DELETABLE_RESOURCES": "labels"}
@@ -67,7 +71,7 @@ async def test_non_deletable_resource_type():
         res = await session.call_tool("create_label", {"name": f"Lbl_{random_string()}"})
         assert not getattr(res, "isError", False)
         lbl_id = get_id(res)
-        
+
         # Update (Allowed)
         res = await session.call_tool("update_label", {"id": lbl_id, "color": "#000000"})
         assert not getattr(res, "isError", False)
@@ -76,6 +80,7 @@ async def test_non_deletable_resource_type():
         res = await session.call_tool("delete_label", {"id": lbl_id})
         assert res.isError is True
         assert "disabled" in res.content[0].text.lower()
+
 
 @pytest.mark.anyio
 async def test_protected_id():
@@ -101,6 +106,7 @@ async def test_protected_id():
         assert res.isError is True
         assert "disabled" in res.content[0].text.lower()
 
+
 @pytest.mark.anyio
 async def test_non_deletable_id():
     # Pre-setup: Create Item
@@ -124,6 +130,7 @@ async def test_non_deletable_id():
         assert res.isError is True
         assert "disabled" in res.content[0].text.lower()
 
+
 @pytest.mark.anyio
 async def test_wipe_inventory_disabled_by_default():
     """Test that wipe_inventory is disabled by default."""
@@ -132,30 +139,27 @@ async def test_wipe_inventory_disabled_by_default():
         assert res.isError is True
         assert "disabled" in res.content[0].text.lower()
 
+
 @pytest.mark.anyio
 async def test_wipe_inventory_blocked_by_non_deletable():
     """Test that wipe_inventory is blocked by guardrails even if enabled via safety switch."""
-    env_vars = {
-        "HOMEBOX_ALLOW_WIPE_INVENTORY": "true",
-        "HOMEBOX_NON_DELETABLE_RESOURCES": "inventory"
-    }
+    env_vars = {"HOMEBOX_ALLOW_WIPE_INVENTORY": "true", "HOMEBOX_NON_DELETABLE_RESOURCES": "inventory"}
 
     async for session in run_scenario_session(env_vars):
         res = await session.call_tool("wipe_inventory", {})
         assert res.isError is True
         assert "disabled for resource type 'inventory'" in res.content[0].text
+
 
 @pytest.mark.anyio
 async def test_wipe_inventory_blocked_by_readonly():
     """Test that wipe_inventory is blocked by readonly guardrails even if enabled via safety switch."""
-    env_vars = {
-        "HOMEBOX_ALLOW_WIPE_INVENTORY": "true",
-        "HOMEBOX_READONLY_RESOURCES": "inventory"
-    }
+    env_vars = {"HOMEBOX_ALLOW_WIPE_INVENTORY": "true", "HOMEBOX_READONLY_RESOURCES": "inventory"}
     async for session in run_scenario_session(env_vars):
         res = await session.call_tool("wipe_inventory", {})
         assert res.isError is True
         assert "disabled for resource type 'inventory'" in res.content[0].text
+
 
 @pytest.mark.anyio
 async def test_wipe_inventory_full_cycle():
@@ -165,15 +169,13 @@ async def test_wipe_inventory_full_cycle():
     test_email = f"test_{random_string()}@example.com"
     test_pass = "TestPass123!"
     test_name = "Test User"
-    
+
     env_vars = {"HOMEBOX_ALLOW_WIPE_INVENTORY": "true"}
     async for session in run_scenario_session(env_vars):
         # 1. Register a temporary user
-        reg_res = await session.call_tool("register_user", {
-            "name": test_name, 
-            "email": test_email, 
-            "password": test_pass
-        })
+        reg_res = await session.call_tool(
+            "register_user", {"name": test_name, "email": test_email, "password": test_pass}
+        )
         if getattr(reg_res, "isError", False):
             if "disabled" in reg_res.content[0].text.lower() or "403" in str(reg_res.content):
                 pytest.skip("User registration is disabled on this Homebox instance.")
@@ -182,25 +184,26 @@ async def test_wipe_inventory_full_cycle():
         try:
             # 2. Login as the new user
             await session.call_tool("login_user", {"username": test_email, "password": test_pass})
-            
+
             # 3. Create some dummy data
             l_res = await session.call_tool("create_location", {"name": "WipeTestLoc"})
             l_id = get_id(l_res)
             await session.call_tool("create_item", {"name": "WipeItem", "location_id": l_id})
-            
+
             # 4. Wipe Inventory
             wipe_res = await session.call_tool("wipe_inventory", {"wipe_locations": True})
             if getattr(wipe_res, "isError", False) and "404" in wipe_res.content[0].text:
                 pytest.skip("wipe-inventory endpoint not supported by this Homebox version.")
             assert not getattr(wipe_res, "isError", False)
-            
+
             # 5. Verify it's gone
             items_res = await session.call_tool("list_items", {})
             assert '"total": 0' in items_res.content[0].text or '"total":0' in items_res.content[0].text
-            
+
         finally:
             # 6. Cleanup
             await session.call_tool("delete_user_self", {})
+
 
 @pytest.mark.anyio
 async def test_wipe_inventory_blocked_for_protected_user():
@@ -208,20 +211,18 @@ async def test_wipe_inventory_blocked_for_protected_user():
     test_email = f"test_{random_string()}@example.com"
     test_pass = "TestPass123!"
     test_name = "Test User"
-    
+
     # We mark this specific test user as PROTECTED
-    env_vars = {
-        "HOMEBOX_ALLOW_WIPE_INVENTORY": "true",
-        "HOMEBOX_PROTECTED_USERS": test_email
-    }
-    
+    env_vars = {"HOMEBOX_ALLOW_WIPE_INVENTORY": "true", "HOMEBOX_PROTECTED_USERS": test_email}
+
     async for session in run_scenario_session(env_vars):
         # 1. Register
         await session.call_tool("register_user", {"name": test_name, "email": test_email, "password": test_pass})
         # 2. Login
         await session.call_tool("login_user", {"username": test_email, "password": test_pass})
-        
+
         # 3. Wipe should fail because user is protected
         res = await session.call_tool("wipe_inventory", {})
         assert res.isError is True
-        assert "disabled for user" in res.content[0].text.lower() or "disabled for protected user" in res.content[0].text.lower()
+        msg = res.content[0].text.lower()
+        assert "disabled for user" in msg or "disabled for protected user" in msg

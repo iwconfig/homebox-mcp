@@ -1,25 +1,30 @@
-import pytest
+import json
 import re
 import uuid
-import json
+
+import pytest
+
 
 def get_id(res):
     if hasattr(res, "content"):
         text = res.content[0].text
     else:
         text = res
-        
-    if not text: return None
+
+    if not text:
+        return None
     try:
         data = json.loads(text)
         if isinstance(data, dict):
             return data.get("id")
-    except:
+    except (json.JSONDecodeError, AttributeError):
         pass
-        
+
     m = re.search(r'"id":\s*"([a-f0-9\-]+)"', text)
-    if m: return m.group(1)
+    if m:
+        return m.group(1)
     return None
+
 
 @pytest.mark.anyio
 async def test_template_lifecycle(server_session):
@@ -42,11 +47,9 @@ async def test_template_lifecycle(server_session):
     assert not getattr(res, "isError", False)
 
     # Create Item from Template
-    res = await server_session.call_tool("create_item_from_template", {
-        "id": t_id,
-        "name": "Item-From-Template",
-        "location_id": loc_id
-    })
+    res = await server_session.call_tool(
+        "create_item_from_template", {"id": t_id, "name": "Item-From-Template", "location_id": loc_id}
+    )
     assert not getattr(res, "isError", False)
     item_id = get_id(res)
 

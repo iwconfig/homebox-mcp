@@ -7,23 +7,28 @@ from ..client import HomeboxClient
 
 # --- Tool Handlers ---
 
+
 async def handle_get_status(client: HomeboxClient) -> dict:
     """Get Homebox application status/info."""
     return await client.request("GET", "status")
 
+
 async def handle_list_currencies(client: HomeboxClient) -> list[dict]:
     """Get all supported currencies."""
     return await client.request("GET", "currencies")
+
 
 async def handle_create_qrcode(client: HomeboxClient, text: str) -> Image:
     """Create QR Code for a string."""
     data = await client.request("GET", "qrcode", params={"data": text}, return_bytes=True)
     return Image(data=data, format="png")
 
+
 async def handle_search_product_by_barcode(client: HomeboxClient, barcode: str) -> list[dict] | None:
     """Search EAN from Barcode."""
     # Homebox specifically decodes 'productEAN' from query params
     return await client.request("GET", "products/search-from-barcode", params={"productEAN": barcode})
+
 
 async def handle_get_label_image(client: HomeboxClient, id: str, type: str, print_label: bool = False) -> Image:
     """Get Label Image. Type must be one of: 'item', 'asset', 'location'."""
@@ -43,7 +48,9 @@ async def handle_get_label_image(client: HomeboxClient, id: str, type: str, prin
     data = await client.request("GET", f"labelmaker/{api_type}/{id}", params=params, return_bytes=True)
     return Image(data=data, format="png")
 
+
 # --- Registration ---
+
 
 def register_misc_tools(mcp: FastMCP, client: HomeboxClient):
     @mcp.tool(output_schema={"type": "object"})
@@ -58,16 +65,12 @@ def register_misc_tools(mcp: FastMCP, client: HomeboxClient):
         return {"currencies": res}
 
     @mcp.tool()
-    async def create_qrcode(
-        text: Annotated[str, "Text to encode in the QR code"]
-    ) -> Image:
+    async def create_qrcode(text: Annotated[str, "Text to encode in the QR code"]) -> Image:
         """Create QR Code for a string"""
         return await handle_create_qrcode(client, text=text)
 
     @mcp.tool(output_schema={"type": "object"})
-    async def search_product_by_barcode(
-        barcode: Annotated[str, "The barcode (EAN) to search for"]
-    ) -> dict:
+    async def search_product_by_barcode(barcode: Annotated[str, "The barcode (EAN) to search for"]) -> dict:
         """Search EAN from Barcode"""
         res = await handle_search_product_by_barcode(client, barcode=barcode)
         return {"products": res}
@@ -76,7 +79,7 @@ def register_misc_tools(mcp: FastMCP, client: HomeboxClient):
     async def get_label_image(
         id: Annotated[str, "ID of the item, asset, or location"],
         type: Annotated[str, "Type of label: 'item', 'asset', or 'location'"],
-        print_label: Annotated[bool, "Whether to optimize for printing"] = False
+        print_label: Annotated[bool, "Whether to optimize for printing"] = False,
     ) -> Image:
         """Get Label Image"""
         return await handle_get_label_image(client, id=id, type=type, print_label=print_label)

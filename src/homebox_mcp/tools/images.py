@@ -15,6 +15,7 @@ INBOX_DIR = os.getenv("HOMEBOX_INBOX_DIR", "inbox")
 
 # --- Tool Handlers ---
 
+
 async def handle_get_inbox_queue(client: HomeboxClient) -> list[dict[str, Any]]:
     """Returns unified list of items in the Inbox."""
     items = []
@@ -26,29 +27,34 @@ async def handle_get_inbox_queue(client: HomeboxClient) -> list[dict[str, Any]]:
     if inbox_location:
         inbox_items = await client.request("GET", "items", params={"locations": [inbox_location["id"]]})
         for item in inbox_items.get("items", []):
-            items.append({
-                "id": item["id"],
-                "name": item["name"],
-                "source": "homebox",
-                "type": "item",
-                "location": item.get("location", {}).get("name", "Inbox"),
-                "attachments": item.get("attachments", [])
-            })
+            items.append(
+                {
+                    "id": item["id"],
+                    "name": item["name"],
+                    "source": "homebox",
+                    "type": "item",
+                    "location": item.get("location", {}).get("name", "Inbox"),
+                    "attachments": item.get("attachments", []),
+                }
+            )
 
     # 2. Fetch from local directory
     inbox_path = anyio.Path(INBOX_DIR)
     if await inbox_path.exists():
         async for filename in inbox_path.iterdir():
-            if filename.suffix.lower() in ('.png', '.jpg', '.jpeg', '.webp'):
-                items.append({
-                    "id": filename.name,
-                    "name": filename.name,
-                    "source": "local",
-                    "type": "file",
-                    "path": str(filename)
-                })
+            if filename.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp"):
+                items.append(
+                    {
+                        "id": filename.name,
+                        "name": filename.name,
+                        "source": "local",
+                        "type": "file",
+                        "path": str(filename),
+                    }
+                )
 
     return items
+
 
 async def handle_get_inbox_image(client: HomeboxClient, id: str, attachment_id: str | None = None) -> Image:
     """Retrieve binary image data for an inbox item."""
@@ -67,6 +73,7 @@ async def handle_get_inbox_image(client: HomeboxClient, id: str, attachment_id: 
 
     data = await client.request("GET", f"items/{id}/attachments/{attachment_id}", return_bytes=True)
     return Image(data=data, format="png")
+
 
 def _sync_image_ops(image_data: bytes, crop_box: list[int] | None = None, rotation: int | None = None) -> bytes:
     """Helper to apply crop and rotation using PIL."""
@@ -87,6 +94,7 @@ def _sync_image_ops(image_data: bytes, crop_box: list[int] | None = None, rotati
     img.save(output, format="PNG")
     return output.getvalue()
 
+
 async def handle_finalize_processed_item(
     client: HomeboxClient,
     id: str,
@@ -101,7 +109,7 @@ async def handle_finalize_processed_item(
     label_ids: list[str] | None = None,
     rotation: int | None = None,
     extracted_objects: list[dict[str, Any]] | None = None,
-    ctx: Context | None = None
+    ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Finalizes an item by updating metadata and moving it to a new location."""
     if extracted_objects:
@@ -122,26 +130,28 @@ async def handle_finalize_processed_item(
             "name": name,
             "locationId": location_id,
             "description": description or "",
-            "labelIds": label_ids or []
+            "labelIds": label_ids or [],
         }
         item = await client.request("POST", "items", json=create_payload)
         new_id = item["id"]
 
         # 2. Upload image
-        files = {'file': (f"{name}.png", file_content, "image/png")}
-        attach_data = {'name': name, 'type': 'photo', 'primary': 'true'}
+        files = {"file": (f"{name}.png", file_content, "image/png")}
+        attach_data = {"name": name, "type": "photo", "primary": "true"}
         await client.request("POST", f"items/{new_id}/attachments", files=files, data=attach_data)
 
         # 3. Final enrichment
         update_payload = item.copy()
-        update_payload.update({
-            "manufacturer": manufacturer or "",
-            "modelNumber": model_number or "",
-            "serialNumber": serial_number or "",
-            "notes": notes or "",
-            "purchaseTime": "0001-01-01T00:00:00Z",
-            "warrantyExpires": "0001-01-01T00:00:00Z"
-        })
+        update_payload.update(
+            {
+                "manufacturer": manufacturer or "",
+                "modelNumber": model_number or "",
+                "serialNumber": serial_number or "",
+                "notes": notes or "",
+                "purchaseTime": "0001-01-01T00:00:00Z",
+                "warrantyExpires": "0001-01-01T00:00:00Z",
+            }
+        )
         await client.request("PUT", f"items/{new_id}", json=update_payload)
 
         # 4. Cleanup
@@ -157,15 +167,17 @@ async def handle_finalize_processed_item(
         if "labels" in item and item["labels"]:
             update_payload["labelIds"] = [label["id"] for label in item["labels"]]
 
-        update_payload.update({
-            "name": name,
-            "locationId": location_id,
-            "description": description if description is not None else update_payload.get("description", ""),
-            "manufacturer": manufacturer if manufacturer is not None else update_payload.get("manufacturer", ""),
-            "modelNumber": model_number if model_number is not None else update_payload.get("modelNumber", ""),
-            "serialNumber": serial_number if serial_number is not None else update_payload.get("serialNumber", ""),
-            "notes": notes if notes is not None else update_payload.get("notes", ""),
-        })
+        update_payload.update(
+            {
+                "name": name,
+                "locationId": location_id,
+                "description": description if description is not None else update_payload.get("description", ""),
+                "manufacturer": manufacturer if manufacturer is not None else update_payload.get("manufacturer", ""),
+                "modelNumber": model_number if model_number is not None else update_payload.get("modelNumber", ""),
+                "serialNumber": serial_number if serial_number is not None else update_payload.get("serialNumber", ""),
+                "notes": notes if notes is not None else update_payload.get("notes", ""),
+            }
+        )
 
         if label_ids is not None:
             update_payload["labelIds"] = label_ids
@@ -185,11 +197,9 @@ async def handle_finalize_processed_item(
 
         return {"status": "success", "id": id, "action": "updated_homebox_item"}
 
+
 async def handle_crop_item_image(
-    client: HomeboxClient,
-    item_id: str,
-    attachment_id: str,
-    crop_box: list[int]
+    client: HomeboxClient, item_id: str, attachment_id: str, crop_box: list[int]
 ) -> dict[str, Any]:
     """Crops an item's image attachment and replaces the original."""
     image_data = await client.request("GET", f"items/{item_id}/attachments/{attachment_id}", return_bytes=True)
@@ -200,11 +210,11 @@ async def handle_crop_item_image(
     if not existing:
         raise ValueError(f"Attachment {attachment_id} not found")
 
-    files = {'file': (existing.get("title", "cropped.png"), cropped_data, "image/png")}
+    files = {"file": (existing.get("title", "cropped.png"), cropped_data, "image/png")}
     attach_data = {
-        'name': existing.get("title", "cropped"),
-        'type': existing.get("type", "photo"),
-        'primary': 'true' if existing.get("primary") else 'false'
+        "name": existing.get("title", "cropped"),
+        "type": existing.get("type", "photo"),
+        "primary": "true" if existing.get("primary") else "false",
     }
 
     # 1. Upload new cropped version
@@ -215,11 +225,9 @@ async def handle_crop_item_image(
 
     return {"status": "success", "action": "cropped"}
 
+
 async def handle_rotate_item_image(
-    client: HomeboxClient,
-    item_id: str,
-    attachment_id: str,
-    degrees: int
+    client: HomeboxClient, item_id: str, attachment_id: str, degrees: int
 ) -> dict[str, Any]:
     """Rotates an item's image attachment and replaces the original."""
     image_data = await client.request("GET", f"items/{item_id}/attachments/{attachment_id}", return_bytes=True)
@@ -230,11 +238,11 @@ async def handle_rotate_item_image(
     if not existing:
         raise ValueError(f"Attachment {attachment_id} not found")
 
-    files = {'file': (existing.get("title", "rotated.png"), rotated_data, "image/png")}
+    files = {"file": (existing.get("title", "rotated.png"), rotated_data, "image/png")}
     attach_data = {
-        'name': existing.get("title", "rotated"),
-        'type': existing.get("type", "photo"),
-        'primary': 'true' if existing.get("primary") else 'false'
+        "name": existing.get("title", "rotated"),
+        "type": existing.get("type", "photo"),
+        "primary": "true" if existing.get("primary") else "false",
     }
 
     # 1. Upload new rotated version
@@ -245,13 +253,14 @@ async def handle_rotate_item_image(
 
     return {"status": "success", "action": "rotated"}
 
+
 async def handle_split_item_from_image(
     client: HomeboxClient,
     id: str,
     extracted_objects: list[dict[str, Any]],
     attachment_id: str | None = None,
     source: Literal["homebox", "local"] = "homebox",
-    ctx: Context | None = None
+    ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Splits an item into multiple items by providing crop boxes."""
     if source == "local":
@@ -272,35 +281,32 @@ async def handle_split_item_from_image(
         if ctx:
             await ctx.report_progress(i, total)
 
-        obj_data = await to_thread.run_sync(
-            _sync_image_ops,
-            source_data,
-            obj.get("crop_box"),
-            obj.get("rotation")
-        )
+        obj_data = await to_thread.run_sync(_sync_image_ops, source_data, obj.get("crop_box"), obj.get("rotation"))
 
         # 1. Create item
         create_payload = {
             "name": obj["name"],
             "locationId": obj["locationId"],
             "description": obj.get("description", ""),
-            "labelIds": obj.get("labelIds", [])
+            "labelIds": obj.get("labelIds", []),
         }
         new_item = await client.request("POST", "items", json=create_payload)
         new_id = new_item["id"]
 
         # 2. Upload cutout
-        files = {'file': (f"{obj['name']}.png", obj_data, "image/png")}
-        attach_data = {'name': obj["name"], 'type': 'photo', 'primary': 'true'}
+        files = {"file": (f"{obj['name']}.png", obj_data, "image/png")}
+        attach_data = {"name": obj["name"], "type": "photo", "primary": "true"}
         await client.request("POST", f"items/{new_id}/attachments", files=files, data=attach_data)
 
         # 3. Final enrichment
         update_payload = new_item.copy()
-        update_payload.update({
-            "notes": obj.get("notes", ""),
-            "purchaseTime": "0001-01-01T00:00:00Z",
-            "warrantyExpires": "0001-01-01T00:00:00Z"
-        })
+        update_payload.update(
+            {
+                "notes": obj.get("notes", ""),
+                "purchaseTime": "0001-01-01T00:00:00Z",
+                "warrantyExpires": "0001-01-01T00:00:00Z",
+            }
+        )
         await client.request("PUT", f"items/{new_id}", json=update_payload)
         results.append(new_id)
 
@@ -316,7 +322,9 @@ async def handle_split_item_from_image(
 
     return {"status": "success", "created_ids": results, "action": "split"}
 
+
 # --- Registration ---
+
 
 def register_vision_tools(mcp: FastMCP, client: HomeboxClient):
     @mcp.tool(output_schema={"type": "object"})
@@ -328,7 +336,7 @@ def register_vision_tools(mcp: FastMCP, client: HomeboxClient):
     @mcp.tool()
     async def get_inbox_image(
         id: Annotated[str, "ID of the item or local file name"],
-        attachment_id: Annotated[str | None, "Optional attachment ID for Homebox items"] = None
+        attachment_id: Annotated[str | None, "Optional attachment ID for Homebox items"] = None,
     ) -> Image:
         """Retrieve the binary image data for an inbox item."""
         return await handle_get_inbox_image(client, id=id, attachment_id=attachment_id)
@@ -347,21 +355,31 @@ def register_vision_tools(mcp: FastMCP, client: HomeboxClient):
         label_ids: Annotated[list[str] | None, "List of label UUIDs"] = None,
         rotation: Annotated[int | None, "Rotation to apply (counter-clockwise)"] = None,
         extracted_objects: Annotated[list[dict[str, Any]] | None, "List of objects to extract (splitting)"] = None,
-        ctx: Context | None = None
+        ctx: Context | None = None,
     ) -> dict[str, Any]:
         """Finalizes an item by updating metadata and moving it to a new location."""
         return await handle_finalize_processed_item(
-            client, id=id, name=name, location_id=location_id, source=source,
-            description=description, manufacturer=manufacturer, model_number=model_number,
-            serial_number=serial_number, notes=notes, label_ids=label_ids,
-            rotation=rotation, extracted_objects=extracted_objects, ctx=ctx
+            client,
+            id=id,
+            name=name,
+            location_id=location_id,
+            source=source,
+            description=description,
+            manufacturer=manufacturer,
+            model_number=model_number,
+            serial_number=serial_number,
+            notes=notes,
+            label_ids=label_ids,
+            rotation=rotation,
+            extracted_objects=extracted_objects,
+            ctx=ctx,
         )
 
     @mcp.tool()
     async def crop_item_image(
         item_id: Annotated[str, "ID of the item"],
         attachment_id: Annotated[str, "ID of the attachment to crop"],
-        crop_box: Annotated[list[int], "Crop box [left, top, right, bottom] in 0-1000 scale"]
+        crop_box: Annotated[list[int], "Crop box [left, top, right, bottom] in 0-1000 scale"],
     ) -> dict[str, Any]:
         """Crops an item's image attachment to remove background/clutter."""
         return await handle_crop_item_image(client, item_id=item_id, attachment_id=attachment_id, crop_box=crop_box)
@@ -370,7 +388,7 @@ def register_vision_tools(mcp: FastMCP, client: HomeboxClient):
     async def rotate_item_image(
         item_id: Annotated[str, "ID of the item"],
         attachment_id: Annotated[str, "ID of the attachment to rotate"],
-        degrees: Annotated[int, "Degrees to rotate counter-clockwise"]
+        degrees: Annotated[int, "Degrees to rotate counter-clockwise"],
     ) -> dict[str, Any]:
         """Rotates an item's image attachment counter-clockwise."""
         return await handle_rotate_item_image(client, item_id=item_id, attachment_id=attachment_id, degrees=degrees)
@@ -381,10 +399,9 @@ def register_vision_tools(mcp: FastMCP, client: HomeboxClient):
         extracted_objects: Annotated[list[dict[str, Any]], "List of objects with names, locations, and crop boxes"],
         attachment_id: Annotated[str | None, "Optional attachment ID"] = None,
         source: Annotated[Literal["homebox", "local"], "Source of the item"] = "homebox",
-        ctx: Context | None = None
+        ctx: Context | None = None,
     ) -> dict[str, Any]:
         """Splits a single inventory item (or local file) into multiple items."""
         return await handle_split_item_from_image(
-            client, id=id, extracted_objects=extracted_objects,
-            attachment_id=attachment_id, source=source, ctx=ctx
+            client, id=id, extracted_objects=extracted_objects, attachment_id=attachment_id, source=source, ctx=ctx
         )

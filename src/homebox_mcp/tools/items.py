@@ -1,8 +1,8 @@
 import base64
 import mimetypes
 import os
-from datetime import datetime, timezone
-from typing import Annotated, Literal
+from datetime import UTC, datetime
+from typing import Annotated
 
 import anyio
 import httpx
@@ -13,6 +13,7 @@ from ..client import HomeboxClient
 from ..guardrails import protect_resource
 
 # --- Tool Handlers ---
+
 
 async def handle_get_item_image(client: HomeboxClient, id: str) -> Image:
     """Retrieve the primary image for an item."""
@@ -27,6 +28,7 @@ async def handle_get_item_image(client: HomeboxClient, id: str) -> Image:
 
     return Image(data=data, format="png")
 
+
 async def handle_list_items(
     client: HomeboxClient,
     q: str | None = None,
@@ -39,7 +41,7 @@ async def handle_list_items(
     only_without_photo: bool = False,
     only_with_photo: bool = False,
     include_archived: bool = False,
-    order_by: str | None = None
+    order_by: str | None = None,
 ) -> dict:
     """Query All Items."""
     params = {}
@@ -57,21 +59,25 @@ async def handle_list_items(
         params["parentIds"] = parent_ids
 
     # Map boolean flags to the lowercase strings expected by the backend
-    params.update({
-        "negateLabels": str(negate_labels).lower(),
-        "onlyWithoutPhoto": str(only_without_photo).lower(),
-        "onlyWithPhoto": str(only_with_photo).lower(),
-        "includeArchived": str(include_archived).lower()
-    })
+    params.update(
+        {
+            "negateLabels": str(negate_labels).lower(),
+            "onlyWithoutPhoto": str(only_without_photo).lower(),
+            "onlyWithPhoto": str(only_with_photo).lower(),
+            "includeArchived": str(include_archived).lower(),
+        }
+    )
 
     if order_by:
         params["orderBy"] = order_by
 
     return await client.request("GET", "items", params=params)
 
+
 async def handle_get_item(client: HomeboxClient, id: str) -> dict:
     """Get full details for a specific item by ID."""
     return await client.request("GET", f"items/{id}")
+
 
 async def handle_get_item_link(client: HomeboxClient, query: str) -> str:
     """Searches for an item by name, asset ID, or description and returns its web link."""
@@ -104,6 +110,7 @@ async def handle_get_item_link(client: HomeboxClient, query: str) -> str:
 
     return output
 
+
 @protect_resource(resource_type="items", action="create")
 async def handle_create_item(
     client: HomeboxClient,
@@ -118,7 +125,7 @@ async def handle_create_item(
     manufacturer: str | None = None,
     purchase_price: float | None = None,
     notes: str | None = None,
-    ctx: Context | None = None
+    ctx: Context | None = None,
 ) -> dict:
     """Creates a new item and performs metadata enrichment."""
     if ctx:
@@ -129,7 +136,7 @@ async def handle_create_item(
         "quantity": int(quantity),
         "description": description or "",
         "labelIds": label_ids or [],
-        "locationId": location_id
+        "locationId": location_id,
     }
     if parent_id:
         create_payload["parentId"] = parent_id
@@ -195,6 +202,7 @@ async def handle_create_item(
             pass
         raise e
 
+
 @protect_resource(resource_type="items", action="update")
 async def handle_update_item(
     client: HomeboxClient,
@@ -211,7 +219,7 @@ async def handle_update_item(
     purchase_price: float | None = None,
     notes: str | None = None,
     fields: list[dict] | None = None,
-    ctx: Context | None = None
+    ctx: Context | None = None,
 ) -> dict:
     """Update an existing item using merged data via PUT."""
     if ctx:
@@ -269,13 +277,14 @@ async def handle_update_item(
 
     return data
 
+
 @protect_resource(resource_type="items", action="update")
 async def handle_patch_item(
     client: HomeboxClient,
     id: str,
     location_id: str | None = None,
     quantity: int | None = None,
-    label_ids: list[str] | None = None
+    label_ids: list[str] | None = None,
 ) -> dict:
     """Partial update for items via the PATCH endpoint."""
     payload = {}
@@ -288,27 +297,33 @@ async def handle_patch_item(
 
     return await client.request("PATCH", f"items/{id}", json=payload)
 
+
 @protect_resource(resource_type="items", action="delete")
 async def handle_delete_item(client: HomeboxClient, id: str) -> str:
     """Delete an item by ID."""
     await client.request("DELETE", f"items/{id}")
     return f"Deleted item {id}"
 
+
 async def handle_get_item_by_asset_id(client: HomeboxClient, id: str) -> dict:
     """Get Item by Asset ID."""
     return await client.request("GET", f"assets/{id}")
+
 
 async def handle_export_items(client: HomeboxClient) -> str:
     """Export all items to CSV format."""
     return await client.request("GET", "items/export")
 
+
 async def handle_get_item_fields(client: HomeboxClient) -> list[str]:
     """Get all custom field names."""
     return await client.request("GET", "items/fields")
 
+
 async def handle_get_item_field_values(client: HomeboxClient, field: str) -> list[str]:
     """Get all unique values for a specific custom field."""
     return await client.request("GET", "items/fields/values", params={"field": field})
+
 
 async def handle_duplicate_item(
     client: HomeboxClient,
@@ -316,29 +331,33 @@ async def handle_duplicate_item(
     copy_attachments: bool = False,
     copy_custom_fields: bool = False,
     copy_maintenance: bool = False,
-    copy_prefix: str = "Copy of "
+    copy_prefix: str = "Copy of ",
 ) -> dict:
     """Creates a copy of an item."""
     payload = {
         "copyAttachments": copy_attachments,
         "copyCustomFields": copy_custom_fields,
         "copyMaintenance": copy_maintenance,
-        "copyPrefix": copy_prefix
+        "copyPrefix": copy_prefix,
     }
     return await client.request("POST", f"items/{id}/duplicate", json=payload)
+
 
 async def handle_get_item_path(client: HomeboxClient, id: str) -> list[dict]:
     """Get the full breadcrumb path of an item's location."""
     return await client.request("GET", f"items/{id}/path")
 
+
 async def handle_get_item_attachment_token(client: HomeboxClient, id: str, attachment_id: str) -> dict:
     """Get the download details for an item attachment."""
     return await client.request("GET", f"items/{id}/attachments/{attachment_id}")
+
 
 async def handle_delete_item_attachment(client: HomeboxClient, id: str, attachment_id: str) -> str:
     """Permanently delete an item attachment."""
     await client.request("DELETE", f"items/{id}/attachments/{attachment_id}")
     return f"Deleted attachment {attachment_id} from item {id}"
+
 
 async def handle_update_item_attachment(
     client: HomeboxClient,
@@ -346,7 +365,7 @@ async def handle_update_item_attachment(
     attachment_id: str,
     primary: bool | None = None,
     title: str | None = None,
-    type: str | None = None
+    type: str | None = None,
 ) -> dict:
     """Update attachment metadata."""
     item = await client.request("GET", f"items/{id}")
@@ -357,14 +376,16 @@ async def handle_update_item_attachment(
     payload = {
         "primary": primary if primary is not None else existing.get("primary", False),
         "title": title if title is not None else existing.get("title", ""),
-        "type": type if type is not None else existing.get("type", "attachment")
+        "type": type if type is not None else existing.get("type", "attachment"),
     }
 
     return await client.request("PUT", f"items/{id}/attachments/{attachment_id}", json=payload)
 
+
 async def handle_get_item_maintenance(client: HomeboxClient, id: str, status: str = "both") -> list[dict]:
     """Get maintenance logs for a specific item."""
     return await client.request("GET", f"items/{id}/maintenance", params={"status": status})
+
 
 async def handle_create_item_maintenance(
     client: HomeboxClient,
@@ -373,28 +394,25 @@ async def handle_create_item_maintenance(
     description: str | None = None,
     scheduled_date: str | None = None,
     completed_date: str | None = None,
-    cost: float = 0
+    cost: float = 0,
 ) -> dict:
     """Create a maintenance entry for an item."""
-    now_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    now_iso = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     payload = {
         "name": name,
         "cost": str(cost),
         "description": description or "",
         "scheduledDate": scheduled_date or now_iso,
-        "completedDate": completed_date or "0001-01-01T00:00:00Z"
+        "completedDate": completed_date or "0001-01-01T00:00:00Z",
     }
     return await client.request("POST", f"items/{id}/maintenance", json=payload)
 
+
 async def handle_upload_item_attachment(
-    client: HomeboxClient,
-    item_id: str,
-    file_path: str,
-    primary: bool = False,
-    attachment_type: str = "photo"
+    client: HomeboxClient, item_id: str, file_path: str, primary: bool = False, attachment_type: str = "photo"
 ) -> dict:
     """Uploads a file as an item attachment."""
-    file_name, mime_type, file_content = "upload", 'application/octet-stream', b""
+    file_name, mime_type, file_content = "upload", "application/octet-stream", b""
 
     if file_path.startswith("data:"):
         header, encoded = file_path.split(",", 1)
@@ -410,7 +428,7 @@ async def handle_upload_item_attachment(
             mime_type = resp.headers.get("content-type", "").split(";")[0] or mime_type
             file_name = os.path.basename(file_path.split("?")[0]) or "upload"
             if "." not in file_name:
-                file_name += (mimetypes.guess_extension(mime_type) or "")
+                file_name += mimetypes.guess_extension(mime_type) or ""
 
     else:
         path = anyio.Path(file_path)
@@ -420,14 +438,11 @@ async def handle_upload_item_attachment(
         mime_type = mimetypes.guess_type(file_path)[0] or mime_type
         file_content = await path.read_bytes()
 
-    files = {'file': (file_name, file_content, mime_type)}
-    attachment_meta = {
-        'name': file_name,
-        'type': attachment_type,
-        'primary': 'true' if primary else 'false'
-    }
+    files = {"file": (file_name, file_content, mime_type)}
+    attachment_meta = {"name": file_name, "type": attachment_type, "primary": "true" if primary else "false"}
 
     return await client.request("POST", f"items/{item_id}/attachments", files=files, data=attachment_meta)
+
 
 async def handle_import_items(client: HomeboxClient, file_path: str) -> str:
     """Import items from a CSV file."""
@@ -436,11 +451,13 @@ async def handle_import_items(client: HomeboxClient, file_path: str) -> str:
         raise FileNotFoundError(f"File not found at {file_path}")
 
     file_content = await path.read_bytes()
-    payload_files = {'csv': (path.name, file_content, 'text/csv')}
+    payload_files = {"csv": (path.name, file_content, "text/csv")}
     await client.request("POST", "items/import", files=payload_files)
     return "Items imported successfully."
 
+
 # --- Registration ---
+
 
 def register_items_tools(mcp: FastMCP, client: HomeboxClient):
     @mcp.tool(output_schema={"type": "object"})
@@ -455,14 +472,22 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         only_without_photo: Annotated[bool, "Only items without a photo"] = False,
         only_with_photo: Annotated[bool, "Only items with a photo"] = False,
         include_archived: Annotated[bool, "Include archived items"] = False,
-        order_by: Annotated[str | None, "Sort order (e.g. 'name', '-name', 'updated_at')"] = None
+        order_by: Annotated[str | None, "Sort order (e.g. 'name', '-name', 'updated_at')"] = None,
     ) -> dict:
         """Query All Items. Supports filtering and pagination."""
         res = await handle_list_items(
-            client, q=q, page=page, page_size=page_size, labels=labels,
-            locations=locations, parent_ids=parent_ids, negate_labels=negate_labels,
-            only_without_photo=only_without_photo, only_with_photo=only_with_photo,
-            include_archived=include_archived, order_by=order_by
+            client,
+            q=q,
+            page=page,
+            page_size=page_size,
+            labels=labels,
+            locations=locations,
+            parent_ids=parent_ids,
+            negate_labels=negate_labels,
+            only_without_photo=only_without_photo,
+            only_with_photo=only_with_photo,
+            include_archived=include_archived,
+            order_by=order_by,
         )
         return res
 
@@ -470,24 +495,18 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
     async def list_archived_items(
         q: Annotated[str | None, "Search query"] = None,
         page: Annotated[int, "Page number"] = 1,
-        page_size: Annotated[int, "Items per page"] = 50
+        page_size: Annotated[int, "Items per page"] = 50,
     ) -> dict:
         """Query only archived items in the inventory."""
-        return await handle_list_items(
-            client, q=q, page=page, page_size=page_size, include_archived=True
-        )
+        return await handle_list_items(client, q=q, page=page, page_size=page_size, include_archived=True)
 
     @mcp.tool(output_schema={"type": "object"})
-    async def get_item(
-        id: Annotated[str, "ID of the item"]
-    ) -> dict:
+    async def get_item(id: Annotated[str, "ID of the item"]) -> dict:
         """Get Item details by ID"""
         return await handle_get_item(client, id=id)
 
     @mcp.tool()
-    async def get_item_link(
-        query: Annotated[str, "Asset ID, name, or description"]
-    ) -> str:
+    async def get_item_link(query: Annotated[str, "Asset ID, name, or description"]) -> str:
         """Get the direct link to an item by searching for it."""
         return await handle_get_item_link(client, query=query)
 
@@ -504,15 +523,23 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         manufacturer: Annotated[str | None, "Manufacturer name"] = None,
         purchase_price: Annotated[float | None, "Purchase price"] = None,
         notes: Annotated[str | None, "Internal notes"] = None,
-        ctx: Context | None = None
+        ctx: Context | None = None,
     ) -> dict:
         """Create a new item. Handles complex fields via a two-step process."""
         return await handle_create_item(
-            client, name=name, location_id=location_id, description=description,
-            quantity=quantity, parent_id=parent_id, label_ids=label_ids,
-            serial_number=serial_number, model_number=model_number,
-            manufacturer=manufacturer, purchase_price=purchase_price,
-            notes=notes, ctx=ctx
+            client,
+            name=name,
+            location_id=location_id,
+            description=description,
+            quantity=quantity,
+            parent_id=parent_id,
+            label_ids=label_ids,
+            serial_number=serial_number,
+            model_number=model_number,
+            manufacturer=manufacturer,
+            purchase_price=purchase_price,
+            notes=notes,
+            ctx=ctx,
         )
 
     @mcp.tool(output_schema={"type": "object"})
@@ -530,15 +557,25 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         purchase_price: Annotated[float | None, "New purchase price"] = None,
         notes: Annotated[str | None, "New internal notes"] = None,
         fields: Annotated[list[dict] | None, "Custom fields list"] = None,
-        ctx: Context | None = None
+        ctx: Context | None = None,
     ) -> dict:
         """Update an existing item (replaces existing with merged data)"""
         return await handle_update_item(
-            client, id=id, name=name, description=description, quantity=quantity,
-            location_id=location_id, parent_id=parent_id, label_ids=label_ids,
-            serial_number=serial_number, model_number=model_number,
-            manufacturer=manufacturer, purchase_price=purchase_price,
-            notes=notes, fields=fields, ctx=ctx
+            client,
+            id=id,
+            name=name,
+            description=description,
+            quantity=quantity,
+            location_id=location_id,
+            parent_id=parent_id,
+            label_ids=label_ids,
+            serial_number=serial_number,
+            model_number=model_number,
+            manufacturer=manufacturer,
+            purchase_price=purchase_price,
+            notes=notes,
+            fields=fields,
+            ctx=ctx,
         )
 
     @mcp.tool(output_schema={"type": "object"})
@@ -546,25 +583,18 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         id: Annotated[str, "ID of the item"],
         location_id: Annotated[str | None, "ID of the destination location"] = None,
         quantity: Annotated[int | None, "New quantity"] = None,
-        label_ids: Annotated[list[str] | None, "New list of label UUIDs"] = None
+        label_ids: Annotated[list[str] | None, "New list of label UUIDs"] = None,
     ) -> dict:
         """Update item with PATCH (partial update). Only supports moving, quantity change, and labels."""
-        return await handle_patch_item(
-            client, id=id, location_id=location_id, quantity=quantity,
-            label_ids=label_ids
-        )
+        return await handle_patch_item(client, id=id, location_id=location_id, quantity=quantity, label_ids=label_ids)
 
     @mcp.tool()
-    async def delete_item(
-        id: Annotated[str, "ID of the item"]
-    ) -> str:
+    async def delete_item(id: Annotated[str, "ID of the item"]) -> str:
         """Delete an item"""
         return await handle_delete_item(client, id=id)
 
     @mcp.tool(output_schema={"type": "object"})
-    async def get_item_by_asset_id(
-        id: Annotated[str, "Asset ID (e.g. 1234)"]
-    ) -> dict:
+    async def get_item_by_asset_id(id: Annotated[str, "Asset ID (e.g. 1234)"]) -> dict:
         """Get Item by Asset ID"""
         return await handle_get_item_by_asset_id(client, id=id)
 
@@ -580,9 +610,7 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         return {"fields": res}
 
     @mcp.tool(output_schema={"type": "object"})
-    async def get_item_field_values(
-        field: Annotated[str, "Custom field name"]
-    ) -> dict:
+    async def get_item_field_values(field: Annotated[str, "Custom field name"]) -> dict:
         """Get all custom field values for a specific field name"""
         res = await handle_get_item_field_values(client, field=field)
         return {"values": res}
@@ -593,27 +621,27 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         copy_attachments: Annotated[bool, "Whether to copy attachments"] = False,
         copy_custom_fields: Annotated[bool, "Whether to copy custom fields"] = False,
         copy_maintenance: Annotated[bool, "Whether to copy maintenance logs"] = False,
-        copy_prefix: Annotated[str, "Prefix for the duplicated item name"] = "Copy of "
+        copy_prefix: Annotated[str, "Prefix for the duplicated item name"] = "Copy of ",
     ) -> dict:
         """Duplicate an item"""
         return await handle_duplicate_item(
-            client, id=id, copy_attachments=copy_attachments,
-            copy_custom_fields=copy_custom_fields, copy_maintenance=copy_maintenance,
-            copy_prefix=copy_prefix
+            client,
+            id=id,
+            copy_attachments=copy_attachments,
+            copy_custom_fields=copy_custom_fields,
+            copy_maintenance=copy_maintenance,
+            copy_prefix=copy_prefix,
         )
 
     @mcp.tool(output_schema={"type": "object"})
-    async def get_item_path(
-        id: Annotated[str, "ID of the item"]
-    ) -> dict:
+    async def get_item_path(id: Annotated[str, "ID of the item"]) -> dict:
         """Get full path of an item"""
         res = await handle_get_item_path(client, id=id)
         return {"path": res}
 
     @mcp.tool()
     async def get_item_attachment_token(
-        id: Annotated[str, "ID of the item"],
-        attachment_id: Annotated[str, "ID of the attachment"]
+        id: Annotated[str, "ID of the item"], attachment_id: Annotated[str, "ID of the attachment"]
     ) -> str:
         """Get the download token for an item attachment"""
         res = await handle_get_item_attachment_token(client, id=id, attachment_id=attachment_id)
@@ -621,8 +649,7 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
 
     @mcp.tool()
     async def delete_item_attachment(
-        id: Annotated[str, "ID of the item"],
-        attachment_id: Annotated[str, "ID of the attachment"]
+        id: Annotated[str, "ID of the item"], attachment_id: Annotated[str, "ID of the attachment"]
     ) -> str:
         """Delete item attachment"""
         return await handle_delete_item_attachment(client, id=id, attachment_id=attachment_id)
@@ -632,7 +659,7 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         id: Annotated[str, "ID of the item"],
         attachment_id: Annotated[str, "ID of the attachment"],
         primary: Annotated[bool | None, "Whether this is the primary photo"] = None,
-        type: Annotated[str | None, "Type of attachment"] = None
+        type: Annotated[str | None, "Type of attachment"] = None,
     ) -> dict:
         """Update item attachment details."""
         return await handle_update_item_attachment(
@@ -642,7 +669,7 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
     @mcp.tool(output_schema={"type": "object"})
     async def get_item_maintenance(
         id: Annotated[str, "ID of the item"],
-        status: Annotated[str, "Filter by status: 'completed', 'scheduled', or 'both'"] = "both"
+        status: Annotated[str, "Filter by status: 'completed', 'scheduled', or 'both'"] = "both",
     ) -> dict:
         """Get maintenance log"""
         res = await handle_get_item_maintenance(client, id=id, status=status)
@@ -655,12 +682,17 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         description: Annotated[str | None, "Detailed description"] = None,
         scheduled_date: Annotated[str | None, "ISO 8601 scheduled date"] = None,
         completed_date: Annotated[str | None, "ISO 8601 completion date"] = None,
-        cost: Annotated[float, "Maintenance cost"] = 0
+        cost: Annotated[float, "Maintenance cost"] = 0,
     ) -> dict:
         """Create maintenance entry"""
         return await handle_create_item_maintenance(
-            client, id=id, name=name, description=description,
-            scheduled_date=scheduled_date, completed_date=completed_date, cost=cost
+            client,
+            id=id,
+            name=name,
+            description=description,
+            scheduled_date=scheduled_date,
+            completed_date=completed_date,
+            cost=cost,
         )
 
     @mcp.tool(output_schema={"type": "object"})
@@ -668,24 +700,19 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         item_id: Annotated[str, "ID of the item"],
         file_path: Annotated[str, "Local path, data-uri, or URL of the file"],
         primary: Annotated[bool, "Whether this is the primary photo"] = False,
-        attachment_type: Annotated[str, "Type of attachment (e.g. 'photo', 'manual')"] = "photo"
+        attachment_type: Annotated[str, "Type of attachment (e.g. 'photo', 'manual')"] = "photo",
     ) -> dict:
         """Upload an attachment to an item."""
         return await handle_upload_item_attachment(
-            client, item_id=item_id, file_path=file_path, primary=primary,
-            attachment_type=attachment_type
+            client, item_id=item_id, file_path=file_path, primary=primary, attachment_type=attachment_type
         )
 
     @mcp.tool()
-    async def import_items(
-        file_path: Annotated[str, "Local path to the CSV file"]
-    ) -> str:
+    async def import_items(file_path: Annotated[str, "Local path to the CSV file"]) -> str:
         """Import items from a CSV file."""
         return await handle_import_items(client, file_path=file_path)
 
     @mcp.tool()
-    async def get_item_image(
-        id: Annotated[str, "ID of the item"]
-    ) -> Image:
+    async def get_item_image(id: Annotated[str, "ID of the item"]) -> Image:
         """Retrieve the primary image for an item."""
         return await handle_get_item_image(client, id=id)

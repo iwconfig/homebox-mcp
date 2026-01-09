@@ -1,14 +1,20 @@
-import pytest
 import re
 import uuid
 
+import pytest
+
+
 def get_id(text):
-    if not text: return None
+    if not text:
+        return None
     m = re.search(r'"id":\s*"([a-f0-9\-]+)"', text)
-    if m: return m.group(1)
-    m = re.search(r'ID: ([a-f0-9\-]+)', text)
-    if m: return m.group(1)
+    if m:
+        return m.group(1)
+    m = re.search(r"ID: ([a-f0-9\-]+)", text)
+    if m:
+        return m.group(1)
     return None
+
 
 @pytest.mark.anyio
 async def test_location_lifecycle(server_session):
@@ -32,7 +38,7 @@ async def test_location_lifecycle(server_session):
     new_desc = "Updated Description"
     res = await server_session.call_tool("update_location", {"id": loc_id, "description": new_desc})
     assert not getattr(res, "isError", False)
-    
+
     # Verify update
     res = await server_session.call_tool("get_location", {"id": loc_id})
     assert new_desc in res.content[0].text

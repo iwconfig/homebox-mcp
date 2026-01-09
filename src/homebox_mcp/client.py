@@ -10,11 +10,13 @@ from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
+
 class HomeboxClient:
     """
     Client for interacting with the Homebox API.
     Handles authentication, token management, and request routing.
     """
+
     def __init__(self):
         load_dotenv()
         self.local_url = os.getenv("HOMEBOX_LOCAL_URL", "http://10.0.0.4:7745").rstrip("/")
@@ -38,7 +40,7 @@ class HomeboxClient:
 
         # If using API key, set expiry to far future to avoid unnecessary logins
         if self.api_key:
-            self.token_expiry = datetime.now(UTC) + timedelta(days=365*10)
+            self.token_expiry = datetime.now(UTC) + timedelta(days=365 * 10)
 
     async def login_manual(self, username, password):
         """
@@ -179,7 +181,7 @@ class HomeboxClient:
                     return response.text
             elif "image/" in content_type:
                 # Return data-uri for easier processing in default text mode
-                b64 = base64.b64encode(response.content).decode('utf-8')
+                b64 = base64.b64encode(response.content).decode("utf-8")
                 return f"data:{content_type};base64,{b64}"
 
             return response.text
