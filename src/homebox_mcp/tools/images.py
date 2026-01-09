@@ -129,34 +129,61 @@ async def handle_finalize_processed_item(
         create_payload = {
             "name": name,
             "locationId": location_id,
+            "quantity": 1,
             "description": description or "",
             "labelIds": label_ids or [],
         }
         item = await client.request("POST", "items", json=create_payload)
         new_id = item["id"]
 
-        # 2. Upload image
-        files = {"file": (f"{name}.png", file_content, "image/png")}
-        attach_data = {"name": name, "type": "photo", "primary": "true"}
-        await client.request("POST", f"items/{new_id}/attachments", files=files, data=attach_data)
+        try:
+            # 2. Upload image
+            files = {"file": (f"{name}.png", file_content, "image/png")}
+            attach_data = {"name": name, "type": "photo", "primary": "true"}
+            await client.request("POST", f"items/{new_id}/attachments", files=files, data=attach_data)
 
-        # 3. Final enrichment
-        update_payload = item.copy()
-        update_payload.update(
-            {
-                "manufacturer": manufacturer or "",
-                "modelNumber": model_number or "",
-                "serialNumber": serial_number or "",
-                "notes": notes or "",
-                "purchaseTime": "0001-01-01T00:00:00Z",
-                "warrantyExpires": "0001-01-01T00:00:00Z",
-            }
-        )
-        await client.request("PUT", f"items/{new_id}", json=update_payload)
+            # 3. Final enrichment
+            update_payload = item.copy()
+            # Flatten location and labels for the PUT payload
+            if "location" in item and item["location"]:
+                update_payload["locationId"] = item["location"]["id"]
+            if "labels" in item and item["labels"]:
+                update_payload["labelIds"] = [label["id"] for label in item["labels"]]
 
-        # 4. Cleanup
-        await local_path.unlink()
-        return {"status": "success", "id": new_id, "action": "created_from_local"}
+            update_payload.update(
+                {
+                    "manufacturer": manufacturer or "",
+                    "modelNumber": model_number or "",
+                    "serialNumber": serial_number or "",
+                    "notes": notes or "",
+                }
+            )
+
+            # Convert numeric fields to strings and initialize required dates/strings
+            if "purchasePrice" in update_payload:
+                update_payload["purchasePrice"] = str(update_payload["purchasePrice"])
+            if "soldPrice" in update_payload:
+                update_payload["soldPrice"] = str(update_payload["soldPrice"])
+
+            for key in ["purchaseFrom", "soldTo", "soldNotes", "warrantyDetails"]:
+                if key not in update_payload:
+                    update_payload[key] = ""
+            for key in ["purchaseTime", "soldTime", "warrantyExpires"]:
+                if not update_payload.get(key):
+                    update_payload[key] = "0001-01-01T00:00:00Z"
+
+            await client.request("PUT", f"items/{new_id}", json=update_payload)
+
+            # 4. Cleanup
+            await local_path.unlink()
+            return {"status": "success", "id": new_id, "action": "created_from_local"}
+        except Exception as e:
+            # Rollback: delete the partially created item
+            try:
+                await client.request("DELETE", f"items/{new_id}")
+            except Exception:
+                pass
+            raise e
     else:
         # Homebox item update
         item = await client.request("GET", f"items/{id}")
@@ -182,7 +209,16 @@ async def handle_finalize_processed_item(
         if label_ids is not None:
             update_payload["labelIds"] = label_ids
 
-        # Ensure mandatory date fields are present
+        # Convert numeric fields to strings
+        if "purchasePrice" in update_payload:
+            update_payload["purchasePrice"] = str(update_payload["purchasePrice"])
+        if "soldPrice" in update_payload:
+            update_payload["soldPrice"] = str(update_payload["soldPrice"])
+
+        # Ensure mandatory date and string fields are present
+        for key in ["purchaseFrom", "soldTo", "soldNotes", "warrantyDetails"]:
+            if key not in update_payload:
+                update_payload[key] = ""
         for key in ["purchaseTime", "soldTime", "warrantyExpires"]:
             if not update_payload.get(key):
                 update_payload[key] = "0001-01-01T00:00:00Z"
@@ -286,29 +322,56 @@ async def handle_split_item_from_image(
         # 1. Create item
         create_payload = {
             "name": obj["name"],
-            "locationId": obj["locationId"],
+            "locationId": obj.get("location_id") or obj.get("locationId"),
+            "quantity": 1,
             "description": obj.get("description", ""),
-            "labelIds": obj.get("labelIds", []),
+            "labelIds": obj.get("label_ids") or obj.get("labelIds") or [],
         }
         new_item = await client.request("POST", "items", json=create_payload)
         new_id = new_item["id"]
 
-        # 2. Upload cutout
-        files = {"file": (f"{obj['name']}.png", obj_data, "image/png")}
-        attach_data = {"name": obj["name"], "type": "photo", "primary": "true"}
-        await client.request("POST", f"items/{new_id}/attachments", files=files, data=attach_data)
+        try:
+            # 2. Upload cutout
+            files = {"file": (f"{obj['name']}.png", obj_data, "image/png")}
+            attach_data = {"name": obj["name"], "type": "photo", "primary": "true"}
+            await client.request("POST", f"items/{new_id}/attachments", files=files, data=attach_data)
 
-        # 3. Final enrichment
-        update_payload = new_item.copy()
-        update_payload.update(
-            {
-                "notes": obj.get("notes", ""),
-                "purchaseTime": "0001-01-01T00:00:00Z",
-                "warrantyExpires": "0001-01-01T00:00:00Z",
-            }
-        )
-        await client.request("PUT", f"items/{new_id}", json=update_payload)
-        results.append(new_id)
+            # 3. Final enrichment
+            update_payload = new_item.copy()
+            # Flatten location and labels
+            if "location" in new_item and new_item["location"]:
+                update_payload["locationId"] = new_item["location"]["id"]
+            if "labels" in new_item and new_item["labels"]:
+                update_payload["labelIds"] = [label["id"] for label in new_item["labels"]]
+
+            update_payload.update(
+                {
+                    "notes": obj.get("notes", ""),
+                }
+            )
+
+            # Convert numeric fields to strings and initialize required dates/strings
+            if "purchasePrice" in update_payload:
+                update_payload["purchasePrice"] = str(update_payload["purchasePrice"])
+            if "soldPrice" in update_payload:
+                update_payload["soldPrice"] = str(update_payload["soldPrice"])
+
+            for key in ["purchaseFrom", "soldTo", "soldNotes", "warrantyDetails"]:
+                if key not in update_payload:
+                    update_payload[key] = ""
+            for key in ["purchaseTime", "soldTime", "warrantyExpires"]:
+                if not update_payload.get(key):
+                    update_payload[key] = "0001-01-01T00:00:00Z"
+
+            await client.request("PUT", f"items/{new_id}", json=update_payload)
+            results.append(new_id)
+        except Exception as e:
+            # Rollback: delete the partially created sub-item
+            try:
+                await client.request("DELETE", f"items/{new_id}")
+            except Exception:
+                pass
+            raise e
 
     if ctx:
         await ctx.report_progress(total, total)
