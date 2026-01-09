@@ -11,6 +11,7 @@ def random_string(length=8):
 async def run_scenario_session(env_vars):
     env = os.environ.copy()
     env["PYTHONPATH"] = os.path.join(os.getcwd(), "src")
+    env["MCP_TRANSPORT"] = "stdio"
     # Enable safety switches for guardrail tests
     env["HOMEBOX_ALLOW_USER_REGISTRATION"] = "true"
     env["HOMEBOX_ALLOW_USER_DELETION"] = "true"
@@ -33,6 +34,7 @@ async def test_user_safety_switches_disabled_by_default():
     # Run with empty env (except standard creds)
     env = os.environ.copy()
     env["PYTHONPATH"] = os.path.join(os.getcwd(), "src")
+    env["MCP_TRANSPORT"] = "stdio"
     # Explicitly ensure they are NOT set
     env.pop("HOMEBOX_ALLOW_USER_REGISTRATION", None)
     env.pop("HOMEBOX_ALLOW_USER_DELETION", None)

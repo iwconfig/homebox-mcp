@@ -20,6 +20,7 @@ def get_id(text):
 async def run_scenario_session(env_vars):
     env = os.environ.copy()
     env["PYTHONPATH"] = os.path.join(os.getcwd(), "src")
+    env["MCP_TRANSPORT"] = "stdio"
     # Enable safety switches for test setup/cleanup
     env["HOMEBOX_ALLOW_USER_REGISTRATION"] = "true"
     env["HOMEBOX_ALLOW_USER_DELETION"] = "true"
@@ -186,7 +187,7 @@ async def test_wipe_inventory_full_cycle():
             await session.call_tool("create_item", {"name": "WipeItem", "locationId": l_id})
             
             # 4. Wipe Inventory
-            wipe_res = await session.call_tool("wipe_inventory", {"wipeLocations": True})
+            wipe_res = await session.call_tool("wipe_inventory", {"wipe_locations": True})
             if getattr(wipe_res, "isError", False) and "404" in wipe_res.content[0].text:
                 pytest.skip("wipe-inventory endpoint not supported by this Homebox version.")
             assert not getattr(wipe_res, "isError", False)

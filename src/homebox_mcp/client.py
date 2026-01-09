@@ -115,7 +115,7 @@ class HomeboxClient:
         if datetime.now(timezone.utc) + timedelta(minutes=5) > self.token_expiry:
             await self.refresh_token()
 
-    async def request(self, method: str, endpoint: str, **kwargs) -> Any:
+    async def request(self, method: str, endpoint: str, return_bytes: bool = False, **kwargs) -> Any:
         await self.ensure_valid_token()
         url = f"{self.api_base_url}/{endpoint.lstrip('/')}"
         headers = kwargs.pop("headers", {})
@@ -134,6 +134,10 @@ class HomeboxClient:
             response.raise_for_status()
             if response.status_code == 204:
                 return None
+            
+            if return_bytes:
+                return response.content
+
             content_type = response.headers.get("content-type", "")
             if "application/json" in content_type:
                 try:

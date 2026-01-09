@@ -1,6 +1,7 @@
 import json
 from ..client import HomeboxClient
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP, Context
+from fastmcp.utilities.types import Image
 
 # --- Tool Handlers ---
 
@@ -17,9 +18,9 @@ async def handle_list_currencies(client: HomeboxClient) -> str:
             return "Currency information endpoint not found (404). This might not be supported in this Homebox version."
         raise
 
-async def handle_create_qrcode(client: HomeboxClient, text: str) -> str:
-    data = await client.request("GET", "qrcode", params={"data": text})
-    return f"QR Code Data: {data}"
+async def handle_create_qrcode(client: HomeboxClient, text: str) -> Image:
+    data = await client.request("GET", "qrcode", params={"data": text}, return_bytes=True)
+    return Image(data=data, format="png")
 
 async def handle_search_product_by_barcode(client: HomeboxClient, barcode: str) -> str:
     try:
@@ -31,9 +32,9 @@ async def handle_search_product_by_barcode(client: HomeboxClient, barcode: str) 
     except Exception as e:
         return f"Error searching product by barcode: {str(e)}"
 
-async def handle_get_label_image(client: HomeboxClient, type: str, id: str, print_label: bool = False) -> str:
+async def handle_get_label_image(client: HomeboxClient, type: str, id: str, print_label: bool = False) -> Image:
     if type not in ["item", "asset", "location"]:
-        return "Error: Type must be 'item', 'asset', or 'location'"
+        raise ValueError("Error: Type must be 'item', 'asset', or 'location'")
     
     path = ""
     if type == "asset":
@@ -44,8 +45,8 @@ async def handle_get_label_image(client: HomeboxClient, type: str, id: str, prin
         path = f"labelmaker/location/{id}"
         
     params = {"print": str(print_label).lower()}
-    data = await client.request("GET", path, params=params)
-    return f"Label Image (Base64): {data}"
+    data = await client.request("GET", path, params=params, return_bytes=True)
+    return Image(data=data, format="png")
 
 
 # --- Registration ---
@@ -63,7 +64,7 @@ def register_misc_tools(mcp: FastMCP, client: HomeboxClient):
         return await handle_list_currencies(client)
 
     @mcp.tool()
-    async def create_qrcode(text: str) -> str:
+    async def create_qrcode(text: str) -> Image:
         """Create QR Code for a string"""
         return await handle_create_qrcode(client, text)
 
@@ -73,9 +74,9 @@ def register_misc_tools(mcp: FastMCP, client: HomeboxClient):
         return await handle_search_product_by_barcode(client, barcode)
 
     @mcp.tool()
-    async def get_label_image(type: str, id: str, print_label: bool = False) -> str:
+    async def get_label_image(type: str, id: str, print_label: bool = False) -> Image:
         """
-        Get Label Image (Base64).
+        Get Label Image.
         Type must be one of: 'item', 'asset', 'location'.
         """
         return await handle_get_label_image(client, type, id, print_label)

@@ -16,6 +16,7 @@ async def server_session():
     """Fixture to start the Homebox MCP server and provide a session."""
     env = os.environ.copy()
     env["PYTHONPATH"] = os.path.join(os.getcwd(), "src")
+    env["MCP_TRANSPORT"] = "stdio"
     
     if not env.get("HOMEBOX_API_KEY") and not env.get("HOMEBOX_USERNAME"):
         pytest.skip("No Homebox credentials found in environment")

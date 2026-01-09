@@ -8,9 +8,22 @@ import io
 from datetime import datetime, timezone
 from ..client import HomeboxClient
 from ..guardrails import protect_resource
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP, Context
+from fastmcp.utilities.types import Image
 
 # --- Tool Handlers ---
+
+async def handle_get_item_image(client: HomeboxClient, id: str) -> Image:
+    """Retrieve the primary image for an item."""
+    item = await client.request("GET", f"items/{id}")
+    attachments = item.get("attachments", [])
+    if not attachments:
+        raise ValueError(f"No attachments found for item {id}")
+    
+    # Use primary or first photo
+    primary = next((a for a in attachments if a.get("primary")), attachments[0])
+    data = await client.request("GET", f"items/{id}/attachments/{primary['id']}", return_bytes=True)
+    return Image(data=data, format="png")
 
 async def handle_list_items(
     client: HomeboxClient,
@@ -19,7 +32,12 @@ async def handle_list_items(
     pageSize: int = 50,
     labels: list[str] = None,
     locations: list[str] = None,
-    parentIds: list[str] = None
+    parentIds: list[str] = None,
+    negateLabels: bool = False,
+    onlyWithoutPhoto: bool = False,
+    onlyWithPhoto: bool = False,
+    includeArchived: bool = False,
+    orderBy: str = None
 ) -> str:
     params = {}
     if q: params["q"] = q
@@ -28,6 +46,11 @@ async def handle_list_items(
     if labels: params["labels"] = labels
     if locations: params["locations"] = locations
     if parentIds: params["parentIds"] = parentIds
+    if negateLabels: params["negateLabels"] = str(negateLabels).lower()
+    if onlyWithoutPhoto: params["onlyWithoutPhoto"] = str(onlyWithoutPhoto).lower()
+    if onlyWithPhoto: params["onlyWithPhoto"] = str(onlyWithPhoto).lower()
+    if includeArchived: params["includeArchived"] = str(includeArchived).lower()
+    if orderBy: params["orderBy"] = orderBy
     
     data = await client.request("GET", "items", params=params)
     items = data.get("items", [])
@@ -90,8 +113,10 @@ async def handle_create_item(
     modelNumber: str = None,
     manufacturer: str = None,
     purchasePrice: float = None,
-    notes: str = None
+    notes: str = None,
+    ctx: Context = None
 ) -> str:
+    if ctx: await ctx.info(f"Creating item '{name}'...")
     create_payload = {
         "name": name,
         "quantity": int(quantity) if quantity is not None else 1,
@@ -103,6 +128,7 @@ async def handle_create_item(
     
     created_item = await client.request("POST", "items", json=create_payload)
     item_id = created_item["id"]
+    if ctx: await ctx.report_progress(50, 100, message="Item created, enriching metadata...")
     
     try:
         # Use the created item as the base for update, avoiding redundant GET
@@ -136,6 +162,7 @@ async def handle_create_item(
             if key not in update_payload: update_payload[key] = "0001-01-01T00:00:00Z"
 
         final_item = await client.request("PUT", f"items/{item_id}", json=update_payload)
+        if ctx: await ctx.report_progress(100, 100, message="Item enriched successfully.")
         return f"Created and Enriched Item: {json.dumps(final_item, indent=2)}"
         
     except Exception as e:
@@ -162,8 +189,10 @@ async def handle_update_item(
     manufacturer: str = None,
     purchasePrice: float = None,
     notes: str = None,
-    fields: list[dict] = None
+    fields: list[dict] = None,
+    ctx: Context = None
 ) -> str:
+    if ctx: await ctx.info(f"Updating item {id}...")
     existing = await client.request("GET", f"items/{id}")
     update_payload = existing.copy()
     
@@ -193,6 +222,7 @@ async def handle_update_item(
         if key not in update_payload: update_payload[key] = existing.get(key, "0001-01-01T00:00:00Z")
 
     data = await client.request("PUT", f"items/{id}", json=update_payload)
+    if ctx: await ctx.info(f"Item {id} updated successfully.")
     return f"Updated Item: {json.dumps(data, indent=2)}"
 
 @protect_resource(resource_type="items", action="update")
@@ -390,10 +420,15 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         pageSize: int = 50,
         labels: list[str] = None,
         locations: list[str] = None,
-        parentIds: list[str] = None
+        parentIds: list[str] = None,
+        negateLabels: bool = False,
+        onlyWithoutPhoto: bool = False,
+        onlyWithPhoto: bool = False,
+        includeArchived: bool = False,
+        orderBy: str = None
     ) -> str:
         """Query All Items. Supports filtering and pagination."""
-        return await handle_list_items(client, q, page, pageSize, labels, locations, parentIds)
+        return await handle_list_items(client, q, page, pageSize, labels, locations, parentIds, negateLabels, onlyWithoutPhoto, onlyWithPhoto, includeArchived, orderBy)
 
     @mcp.tool()
     async def get_item(id: str) -> str:
@@ -417,10 +452,11 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         modelNumber: str = None,
         manufacturer: str = None,
         purchasePrice: float = None,
-        notes: str = None
+        notes: str = None,
+        ctx: Context = None
     ) -> str:
         """Create a new item. Handles complex fields via a two-step create-and-update process. locationId is required."""
-        return await handle_create_item(client, name, locationId, description, quantity, parentId, labelIds, serialNumber, modelNumber, manufacturer, purchasePrice, notes)
+        return await handle_create_item(client, name, locationId, description, quantity, parentId, labelIds, serialNumber, modelNumber, manufacturer, purchasePrice, notes, ctx)
 
     @mcp.tool()
     async def update_item(
@@ -436,10 +472,11 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         manufacturer: str = None,
         purchasePrice: float = None,
         notes: str = None,
-        fields: list[dict] = None
+        fields: list[dict] = None,
+        ctx: Context = None
     ) -> str:
         """Update an existing item (replaces existing with merged data)"""
-        return await handle_update_item(client, id, name, description, quantity, locationId, parentId, labelIds, serialNumber, modelNumber, manufacturer, purchasePrice, notes, fields)
+        return await handle_update_item(client, id, name, description, quantity, locationId, parentId, labelIds, serialNumber, modelNumber, manufacturer, purchasePrice, notes, fields, ctx)
 
     @mcp.tool()
     async def patch_item(
@@ -544,3 +581,8 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
     async def import_items(file_path: str) -> str:
         """Import items from a CSV file."""
         return await handle_import_items(client, file_path)
+
+    @mcp.tool()
+    async def get_item_image(id: str) -> Image:
+        """Retrieve the primary image for an item."""
+        return await handle_get_item_image(client, id)

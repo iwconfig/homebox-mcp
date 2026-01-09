@@ -1,7 +1,7 @@
 import json
 from ..client import HomeboxClient
 from ..guardrails import protect_resource
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP, Context
 
 # --- Tool Handlers ---
 

@@ -1,6 +1,6 @@
 import json
 from ..client import HomeboxClient
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP, Context
 
 # --- Tool Handlers ---
 

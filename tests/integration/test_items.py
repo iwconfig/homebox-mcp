@@ -114,6 +114,11 @@ async def test_item_attachments(server_session):
     })
     assert not getattr(res, "isError", False)
 
+    # Get item image
+    res = await server_session.call_tool("get_item_image", {"id": item_id})
+    assert not getattr(res, "isError", False)
+    assert res.content[0].type == "image"
+
     # Delete attachment
     res = await server_session.call_tool("delete_item_attachment", {
         "id": item_id,
