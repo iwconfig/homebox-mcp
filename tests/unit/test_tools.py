@@ -156,7 +156,10 @@ async def test_get_item_link_asset_id_detection(mock_client):
 @pytest.mark.asyncio
 async def test_upload_item_attachment_base64(mock_client):
     mock_client.request.return_value = {"id": "att-1"}
-    b64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=="
+    b64 = (
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5"
+        "ErkJggg=="
+    )
     res = await handle_upload_item_attachment(mock_client, "itm-1", b64)
     assert res == {"id": "att-1"}
 
