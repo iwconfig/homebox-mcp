@@ -8,9 +8,15 @@ dependencies = [
     "fastmcp",
     "httpx",
     "python-dotenv",
-    "pydantic",
+    "pydantic"
+]
+
+[project.optional-dependencies]
+dev = [
     "respx",
-    "ruff"
+    "ruff",
+    "pytest",
+    "anyio"
 ]
 
 [project.scripts]
