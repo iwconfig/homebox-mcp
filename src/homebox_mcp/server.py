@@ -6,9 +6,9 @@ from contextlib import asynccontextmanager
 
 from fastmcp import FastMCP
 
-from .client import HomeboxClient
-from .prompts import register_all_prompts
-from .tools import register_all_tools
+from homebox_mcp.client import HomeboxClient
+from homebox_mcp.prompts import register_all_prompts
+from homebox_mcp.tools import register_all_tools
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
