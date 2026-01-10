@@ -166,13 +166,13 @@ async def handle_create_item_from_template(
 
 
 def register_templates_tools(mcp: FastMCP, client: HomeboxClient):
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def list_templates() -> dict:
         """Get All Item Templates"""
         res = await handle_list_templates(client)
         return {"templates": res}
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def create_template(
         name: Annotated[str, "Name for the template"],
         description: Annotated[str | None, "Description for the template"] = None,
@@ -212,12 +212,12 @@ def register_templates_tools(mcp: FastMCP, client: HomeboxClient):
             include_warranty_fields=include_warranty_fields,
         )
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool()
     async def get_template(id: Annotated[str, "ID of the template"]) -> dict:
         """Get Item Template"""
         return await handle_get_template(client, id=id)
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def update_template(
         id: Annotated[str, "ID of the template"],
         name: Annotated[str | None, "New name for the template"] = None,
@@ -264,7 +264,7 @@ def register_templates_tools(mcp: FastMCP, client: HomeboxClient):
         """Delete Item Template"""
         return await handle_delete_template(client, id=id)
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def create_item_from_template(
         id: Annotated[str, "ID of the template"],
         name: Annotated[str, "Name for the new item"],

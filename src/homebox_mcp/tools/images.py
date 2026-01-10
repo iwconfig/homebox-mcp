@@ -374,7 +374,7 @@ async def handle_split_item_from_image(
 
 
 def register_vision_tools(mcp: FastMCP, client: HomeboxClient):
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def get_inbox_queue() -> dict:
         """Returns a unified list of items in the Inbox that require processing."""
         res = await handle_get_inbox_queue(client)

@@ -61,13 +61,13 @@ async def handle_delete_label(client: HomeboxClient, id: str) -> str:
 
 
 def register_labels_tools(mcp: FastMCP, client: HomeboxClient):
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def list_labels() -> dict:
         """Get All Labels"""
         res = await handle_list_labels(client)
         return {"labels": res}
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def create_label(
         name: Annotated[str, "Name of the label"],
         description: Annotated[str | None, "Description of the label"] = None,
@@ -76,12 +76,12 @@ def register_labels_tools(mcp: FastMCP, client: HomeboxClient):
         """Create Label"""
         return await handle_create_label(client, name=name, description=description, color=color)
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool()
     async def get_label(id: Annotated[str, "ID of the label"]) -> dict:
         """Get Label"""
         return await handle_get_label(client, id=id)
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def update_label(
         id: Annotated[str, "ID of the label"],
         name: Annotated[str | None, "New name of the label"] = None,

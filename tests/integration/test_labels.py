@@ -38,3 +38,8 @@ async def test_label_lifecycle(server_session):
     # 5. Delete label
     res = await server_session.call_tool("delete_label", {"id": lbl_id}, raise_on_error=False)
     assert not res.is_error
+
+    # 6. Verify deletion
+    res = await server_session.call_tool("get_label", {"id": lbl_id}, raise_on_error=False)
+    assert res.is_error
+    assert "404" in res.content[0].text

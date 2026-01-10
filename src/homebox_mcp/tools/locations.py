@@ -72,13 +72,13 @@ async def handle_delete_location(client: HomeboxClient, id: str) -> str:
 
 
 def register_locations_tools(mcp: FastMCP, client: HomeboxClient):
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def list_locations(filter_children: Annotated[bool, "Whether to filter children"] = False) -> dict:
         """Get All Locations"""
         res = await handle_list_locations(client, filter_children=filter_children)
         return {"locations": res}
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def create_location(
         name: Annotated[str, "Name of the location"],
         description: Annotated[str | None, "Description of the location"] = None,
@@ -87,18 +87,18 @@ def register_locations_tools(mcp: FastMCP, client: HomeboxClient):
         """Create Location"""
         return await handle_create_location(client, name=name, description=description, parent_id=parent_id)
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def get_locations_tree(with_items: Annotated[bool, "Whether to include items in the tree"] = False) -> dict:
         """Get Locations Tree"""
         res = await handle_get_locations_tree(client, with_items=with_items)
         return {"tree": res}
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool()
     async def get_location(id: Annotated[str, "ID of the location"]) -> dict:
         """Get Location"""
         return await handle_get_location(client, id=id)
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def update_location(
         id: Annotated[str, "ID of the location"],
         name: Annotated[str | None, "New name of the location"] = None,

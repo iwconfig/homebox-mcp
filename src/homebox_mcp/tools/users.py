@@ -66,12 +66,12 @@ async def handle_delete_user_self(client: HomeboxClient) -> str:
 
 
 def register_users_tools(mcp: FastMCP, client: HomeboxClient):
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def get_user_self() -> dict:
         """Get current user info"""
         return await handle_get_user_self(client)
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def update_user_self(
         name: Annotated[str | None, "New name for the user"] = None,
         email: Annotated[str | None, "New email address for the user"] = None,

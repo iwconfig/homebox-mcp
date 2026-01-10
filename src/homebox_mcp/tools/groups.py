@@ -64,12 +64,12 @@ async def handle_export_bom(client: HomeboxClient) -> str:
 
 
 def register_groups_tools(mcp: FastMCP, client: HomeboxClient):
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def get_group() -> dict:
         """Get Group Info"""
         return await handle_get_group(client)
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def update_group(
         name: Annotated[str | None, "New name for the group"] = None,
         currency: Annotated[str | None, "New currency code (e.g. USD, EUR)"] = None,
@@ -77,7 +77,7 @@ def register_groups_tools(mcp: FastMCP, client: HomeboxClient):
         """Update Group Info"""
         return await handle_update_group(client, name=name, currency=currency)
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def create_group_invitation(
         uses: Annotated[int, "Number of times the invitation can be used"] = 1,
         expires_at: Annotated[str | None, "ISO 8601 date when invitation expires"] = None,
@@ -85,24 +85,24 @@ def register_groups_tools(mcp: FastMCP, client: HomeboxClient):
         """Create Group Invitation"""
         return await handle_create_group_invitation(client, uses=uses, expires_at=expires_at)
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def get_group_statistics() -> dict:
         """Get Group Statistics"""
         return await handle_get_group_statistics(client)
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def get_label_statistics() -> dict:
         """Get Label Statistics"""
         res = await handle_get_label_statistics(client)
         return {"labels": res}
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def get_location_statistics() -> dict:
         """Get Location Statistics"""
         res = await handle_get_location_statistics(client)
         return {"locations": res}
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def get_purchase_price_statistics(
         start: Annotated[str | None, "Start date (ISO 8601)"] = None,
         end: Annotated[str | None, "End date (ISO 8601)"] = None,

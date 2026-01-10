@@ -49,12 +49,12 @@ async def handle_get_label_image(client: HomeboxClient, id: str, type: str, prin
 
 
 def register_misc_tools(mcp: FastMCP, client: HomeboxClient):
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def get_status() -> dict:
         """Get Homebox application status/info"""
         return await handle_get_status(client)
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def list_currencies() -> dict:
         """Get all supported currencies"""
         res = await handle_list_currencies(client)
@@ -65,7 +65,7 @@ def register_misc_tools(mcp: FastMCP, client: HomeboxClient):
         """Create QR Code for a string"""
         return await handle_create_qrcode(client, text=text)
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def search_product_by_barcode(barcode: Annotated[str, "The barcode (EAN) to search for"]) -> dict:
         """Search EAN from Barcode"""
         res = await handle_search_product_by_barcode(client, barcode=barcode)

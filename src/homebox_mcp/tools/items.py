@@ -460,7 +460,7 @@ async def handle_import_items(client: HomeboxClient, file_path: str) -> str:
 
 
 def register_items_tools(mcp: FastMCP, client: HomeboxClient):
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool()
     async def list_items(
         q: Annotated[str | None, "Search query"] = None,
         page: Annotated[int, "Page number"] = 1,
@@ -491,7 +491,7 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         )
         return res
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool()
     async def list_archived_items(
         q: Annotated[str | None, "Search query"] = None,
         page: Annotated[int, "Page number"] = 1,
@@ -500,7 +500,7 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         """Query only archived items in the inventory."""
         return await handle_list_items(client, q=q, page=page, page_size=page_size, include_archived=True)
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool()
     async def get_item(id: Annotated[str, "ID of the item"]) -> dict:
         """Get Item details by ID"""
         return await handle_get_item(client, id=id)
@@ -510,7 +510,7 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         """Get the direct link to an item by searching for it."""
         return await handle_get_item_link(client, query=query)
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool()
     async def create_item(
         name: Annotated[str, "Name of the item"],
         location_id: Annotated[str, "ID of the location"],
@@ -542,7 +542,7 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
             ctx=ctx,
         )
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool()
     async def update_item(
         id: Annotated[str, "ID of the item"],
         name: Annotated[str | None, "New name for the item"] = None,
@@ -578,7 +578,7 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
             ctx=ctx,
         )
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool()
     async def patch_item(
         id: Annotated[str, "ID of the item"],
         location_id: Annotated[str | None, "ID of the destination location"] = None,
@@ -593,7 +593,7 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         """Delete an item"""
         return await handle_delete_item(client, id=id)
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool()
     async def get_item_by_asset_id(id: Annotated[str, "Asset ID (e.g. 1234)"]) -> dict:
         """Get Item by Asset ID"""
         return await handle_get_item_by_asset_id(client, id=id)
@@ -603,19 +603,19 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         """Export items to CSV"""
         return await handle_export_items(client)
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def get_item_fields() -> dict:
         """Get all custom field names"""
         res = await handle_get_item_fields(client)
         return {"fields": res}
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def get_item_field_values(field: Annotated[str, "Custom field name"]) -> dict:
         """Get all custom field values for a specific field name"""
         res = await handle_get_item_field_values(client, field=field)
         return {"values": res}
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool()
     async def duplicate_item(
         id: Annotated[str, "ID of the item to duplicate"],
         copy_attachments: Annotated[bool, "Whether to copy attachments"] = False,
@@ -633,7 +633,7 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
             copy_prefix=copy_prefix,
         )
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def get_item_path(id: Annotated[str, "ID of the item"]) -> dict:
         """Get full path of an item"""
         res = await handle_get_item_path(client, id=id)
@@ -654,7 +654,7 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         """Delete item attachment"""
         return await handle_delete_item_attachment(client, id=id, attachment_id=attachment_id)
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool()
     async def update_item_attachment(
         id: Annotated[str, "ID of the item"],
         attachment_id: Annotated[str, "ID of the attachment"],
@@ -666,7 +666,7 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
             client, id=id, attachment_id=attachment_id, primary=primary, type=type
         )
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def get_item_maintenance(
         id: Annotated[str, "ID of the item"],
         status: Annotated[str, "Filter by status: 'completed', 'scheduled', or 'both'"] = "both",
@@ -675,7 +675,7 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         res = await handle_get_item_maintenance(client, id=id, status=status)
         return {"maintenance": res}
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool()
     async def create_item_maintenance(
         id: Annotated[str, "ID of the item"],
         name: Annotated[str, "Name of the maintenance entry"],
@@ -695,7 +695,7 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
             cost=cost,
         )
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool()
     async def upload_item_attachment(
         item_id: Annotated[str, "ID of the item"],
         file_path: Annotated[str, "Local path, data-uri, or URL of the file"],

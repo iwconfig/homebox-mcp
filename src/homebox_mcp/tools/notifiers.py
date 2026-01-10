@@ -58,13 +58,13 @@ async def handle_delete_notifier(client: HomeboxClient, id: str) -> str:
 
 
 def register_notifiers_tools(mcp: FastMCP, client: HomeboxClient):
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def list_notifiers() -> dict:
         """Get Notifiers"""
         res = await handle_list_notifiers(client)
         return {"notifiers": res}
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def create_notifier(
         name: Annotated[str, "Name of the notifier"],
         url: Annotated[str, "URL of the notifier"],
@@ -78,7 +78,7 @@ def register_notifiers_tools(mcp: FastMCP, client: HomeboxClient):
         """Test Notifier"""
         return await handle_test_notifier(client, url=url)
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def update_notifier(
         id: Annotated[str, "ID of the notifier"],
         name: Annotated[str | None, "New name of the notifier"] = None,

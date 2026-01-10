@@ -31,14 +31,16 @@ async def test_user_safety_switches_disabled_by_default():
             "register_user", {"name": "Test", "email": "test@ex.com", "password": "Pass"}, raise_on_error=False
         )
         assert res.is_error
-        msg = res.content[0].text.lower()
+        msg = res.content[0].text
         
         # If the backend blocks it first, it means registration is hard-disabled on the server.
-        if "user registration disabled" in msg:
+        if "403" in msg and "user registration disabled" in msg.lower():
             warnings.warn("User registration is hard-disabled on the Homebox backend; skipping safety switch test.")
-            pytest.skip("User registration is disabled on backend.")
+            pytest.skip("User registration is disabled on backend (403).")
             
-        assert "is disabled via safety switch" in msg
+        assert "is disabled via safety switch" in msg.lower()
+        # Safety switch blocks happen in the MCP layer, so they won't have "403" in the message.
+        assert "403" not in msg
 
         # Delete should fail
         res = await client.call_tool("delete_user_self", {}, raise_on_error=False)
@@ -60,9 +62,9 @@ async def test_full_user_protection():
         reg_res = await session.call_tool(
             "register_user", {"name": u_name, "email": u_email, "password": u_pass}, raise_on_error=False
         )
-        if reg_res.is_error and "user registration disabled" in reg_res.content[0].text.lower():
+        if reg_res.is_error and "403" in reg_res.content[0].text and "user registration disabled" in reg_res.content[0].text.lower():
             warnings.warn("User registration is disabled on Homebox demo instance; skipping full protection test.")
-            pytest.skip("User registration is disabled.")
+            pytest.skip("User registration is disabled (403).")
 
         # 2. Login
         await session.call_tool(
@@ -101,8 +103,8 @@ async def test_non_deletable_user_protection():
         reg_res = await session.call_tool(
             "register_user", {"name": u_name, "email": u_email, "password": u_pass}, raise_on_error=False
         )
-        if reg_res.is_error and "user registration disabled" in reg_res.content[0].text.lower():
-            pytest.skip("User registration is disabled on backend.")
+        if reg_res.is_error and "403" in reg_res.content[0].text and "user registration disabled" in reg_res.content[0].text.lower():
+            pytest.skip("User registration is disabled on backend (403).")
 
         await session.call_tool(
             "login_user", {"username": u_email, "password": u_pass}, raise_on_error=False
@@ -146,8 +148,8 @@ async def test_all_users_protected():
         reg_res = await session.call_tool(
             "register_user", {"name": u_name, "email": u_email, "password": u_pass}, raise_on_error=False
         )
-        if reg_res.is_error and "user registration disabled" in reg_res.content[0].text.lower():
-            pytest.skip("User registration is disabled on backend.")
+        if reg_res.is_error and "403" in reg_res.content[0].text and "user registration disabled" in reg_res.content[0].text.lower():
+            pytest.skip("User registration is disabled on backend (403).")
 
         await session.call_tool(
             "login_user", {"username": u_email, "password": u_pass}, raise_on_error=False

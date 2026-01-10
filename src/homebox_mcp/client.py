@@ -217,21 +217,11 @@ class HomeboxClient:
         """
         return await self.request("GET", "items", params=params)
 
-    async def get_item(self, item_id: str) -> dict | None:
-        try:
-            return await self.request("GET", f"items/{item_id}")
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
-                return None
-            raise
+    async def get_item(self, item_id: str) -> dict:
+        return await self.request("GET", f"items/{item_id}")
 
-    async def get_item_by_asset_id(self, asset_id: str) -> dict | None:
-        try:
-            return await self.request("GET", f"assets/{asset_id}")
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
-                return None
-            raise
+    async def get_item_by_asset_id(self, asset_id: str) -> dict:
+        return await self.request("GET", f"assets/{asset_id}")
 
     async def create_item(self, payload: dict) -> dict:
         return await self.request("POST", "items", json=payload)
@@ -288,13 +278,8 @@ class HomeboxClient:
         params = {"withItems": "true" if with_items else "false"}
         return await self.request("GET", "locations/tree", params=params)
 
-    async def get_location(self, location_id: str) -> dict | None:
-        try:
-            return await self.request("GET", f"locations/{location_id}")
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
-                return None
-            raise
+    async def get_location(self, location_id: str) -> dict:
+        return await self.request("GET", f"locations/{location_id}")
 
     async def create_location(self, payload: dict) -> dict:
         return await self.request("POST", "locations", json=payload)
@@ -310,13 +295,8 @@ class HomeboxClient:
     async def list_labels(self) -> list[dict]:
         return await self.request("GET", "labels")
 
-    async def get_label(self, label_id: str) -> dict | None:
-        try:
-            return await self.request("GET", f"labels/{label_id}")
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
-                return None
-            raise
+    async def get_label(self, label_id: str) -> dict:
+        return await self.request("GET", f"labels/{label_id}")
 
     async def create_label(self, payload: dict) -> dict:
         return await self.request("POST", "labels", json=payload)
@@ -332,13 +312,8 @@ class HomeboxClient:
     async def query_all_maintenance(self, status: str = "both") -> list[dict]:
         return await self.request("GET", "maintenance", params={"status": status})
 
-    async def get_item_maintenance(self, item_id: str, status: str = "both") -> list[dict] | None:
-        try:
-            return await self.request("GET", f"items/{item_id}/maintenance", params={"status": status})
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
-                return None
-            raise
+    async def get_item_maintenance(self, item_id: str, status: str = "both") -> list[dict]:
+        return await self.request("GET", f"items/{item_id}/maintenance", params={"status": status})
 
     async def create_item_maintenance(self, item_id: str, payload: dict) -> dict:
         return await self.request("POST", f"items/{item_id}/maintenance", json=payload)

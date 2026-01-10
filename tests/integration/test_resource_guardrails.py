@@ -187,8 +187,9 @@ async def test_wipe_inventory_full_cycle():
             raise_on_error=False,
         )
         if reg_res.is_error:
-            if "disabled" in reg_res.content[0].text.lower() or "403" in str(reg_res.content):
-                pytest.skip("User registration is disabled on this Homebox instance.")
+            msg = reg_res.content[0].text
+            if "403" in msg and "disabled" in msg.lower():
+                pytest.skip("User registration is disabled on this Homebox instance (403).")
             return
 
         try:

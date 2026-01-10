@@ -50,11 +50,11 @@ async def test_user_lifecycle():
             raise_on_error=False
         )
         if res.is_error:
-            msg = res.content[0].text.lower()
-            if "user registration disabled" in msg:
+            msg = res.content[0].text
+            if "403" in msg and "user registration disabled" in msg.lower():
                 import warnings
                 warnings.warn("User registration is disabled on this Homebox instance; skipping lifecycle test.")
-                pytest.skip("User registration is disabled.")
+                pytest.skip("User registration is disabled (403).")
             assert not res.is_error
 
         # 3. Login

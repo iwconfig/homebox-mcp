@@ -56,7 +56,7 @@ async def handle_delete_maintenance_entry(client: HomeboxClient, id: str) -> str
 
 
 def register_maintenance_tools(mcp: FastMCP, client: HomeboxClient):
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def query_all_maintenance(
         status: Annotated[str, "Filter by status: 'completed', 'scheduled', or 'both'"] = "both",
     ) -> dict:
@@ -64,7 +64,7 @@ def register_maintenance_tools(mcp: FastMCP, client: HomeboxClient):
         res = await handle_query_all_maintenance(client, status=status)
         return {"maintenance": res}
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def update_maintenance_entry(
         id: Annotated[str, "ID of the maintenance entry"],
         name: Annotated[str | None, "New name for the entry"] = None,
