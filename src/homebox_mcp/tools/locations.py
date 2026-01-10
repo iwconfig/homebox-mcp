@@ -10,8 +10,7 @@ from ..guardrails import protect_resource
 
 async def handle_list_locations(client: HomeboxClient, filter_children: bool = False) -> list[dict]:
     """Get All Locations."""
-    params = {"filterChildren": str(filter_children).lower()}
-    return await client.request("GET", "locations", params=params)
+    return await client.list_locations(filter_children=filter_children)
 
 
 @protect_resource(resource_type="locations", action="create")
@@ -25,18 +24,17 @@ async def handle_create_location(
     if parent_id:
         payload["parentId"] = parent_id
 
-    return await client.request("POST", "locations", json=payload)
+    return await client.create_location(payload)
 
 
 async def handle_get_locations_tree(client: HomeboxClient, with_items: bool = False) -> list[dict]:
     """Get Locations as a nested tree structure."""
-    params = {"withItems": str(with_items).lower()}
-    return await client.request("GET", "locations/tree", params=params)
+    return await client.get_locations_tree(with_items=with_items)
 
 
 async def handle_get_location(client: HomeboxClient, id: str) -> dict:
     """Get full details for a specific location by ID."""
-    return await client.request("GET", f"locations/{id}")
+    return await client.get_location(id)
 
 
 @protect_resource(resource_type="locations", action="update")
@@ -48,7 +46,7 @@ async def handle_update_location(
     parent_id: str | None = None,
 ) -> dict:
     """Update an existing location."""
-    existing = await client.request("GET", f"locations/{id}")
+    existing = await client.get_location(id)
     payload = existing.copy()
 
     if name:
@@ -60,13 +58,13 @@ async def handle_update_location(
     elif "parent" in existing and existing["parent"]:
         payload["parentId"] = existing["parent"]["id"]
 
-    return await client.request("PUT", f"locations/{id}", json=payload)
+    return await client.update_location(id, payload)
 
 
 @protect_resource(resource_type="locations", action="delete")
 async def handle_delete_location(client: HomeboxClient, id: str) -> str:
     """Delete a location by ID."""
-    await client.request("DELETE", f"locations/{id}")
+    await client.delete_location(id)
     return f"Deleted Location {id}"
 
 

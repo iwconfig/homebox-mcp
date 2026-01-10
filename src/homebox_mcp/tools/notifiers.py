@@ -9,19 +9,19 @@ from ..client import HomeboxClient
 
 async def handle_list_notifiers(client: HomeboxClient) -> list[dict]:
     """Get all configured notifiers."""
-    return await client.request("GET", "notifiers")
+    return await client.list_notifiers()
 
 
 async def handle_create_notifier(client: HomeboxClient, name: str, url: str, is_active: bool = True) -> dict:
     """Create a new notification channel (e.g. Discord, Slack, Gotify)."""
     payload = {"name": name, "url": url, "isActive": is_active}
-    return await client.request("POST", "notifiers", json=payload)
+    return await client.create_notifier(payload)
 
 
 async def handle_test_notifier(client: HomeboxClient, url: str) -> str:
     """Test a notifier URL by sending a sample event."""
     try:
-        await client.request("POST", "notifiers/test", json={"url": url})
+        await client.test_notifier({"url": url})
         return "Notifier test signal sent successfully"
     except Exception as e:
         return f"Error testing notifier: {str(e)}"
@@ -31,7 +31,7 @@ async def handle_update_notifier(
     client: HomeboxClient, id: str, name: str | None = None, url: str | None = None, is_active: bool | None = None
 ) -> dict:
     """Update an existing notifier's configuration."""
-    existing_list = await client.request("GET", "notifiers")
+    existing_list = await client.list_notifiers()
     notifier = next((n for n in existing_list if n["id"] == id), None)
 
     if not notifier:
@@ -45,12 +45,12 @@ async def handle_update_notifier(
     if is_active is not None:
         payload["isActive"] = is_active
 
-    return await client.request("PUT", f"notifiers/{id}", json=payload)
+    return await client.update_notifier(id, payload)
 
 
 async def handle_delete_notifier(client: HomeboxClient, id: str) -> str:
     """Delete a notifier by ID."""
-    await client.request("DELETE", f"notifiers/{id}")
+    await client.delete_notifier(id)
     return f"Deleted Notifier {id}"
 
 

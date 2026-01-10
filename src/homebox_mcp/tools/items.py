@@ -71,12 +71,12 @@ async def handle_list_items(
     if order_by:
         params["orderBy"] = order_by
 
-    return await client.request("GET", "items", params=params)
+    return await client.list_items(**params)
 
 
 async def handle_get_item(client: HomeboxClient, id: str) -> dict:
     """Get full details for a specific item by ID."""
-    return await client.request("GET", f"items/{id}")
+    return await client.get_item(id)
 
 
 async def handle_get_item_link(client: HomeboxClient, query: str) -> str:
@@ -142,7 +142,7 @@ async def handle_create_item(
         create_payload["parentId"] = parent_id
 
     # Phase 1: Create basic item
-    created_item = await client.request("POST", "items", json=create_payload)
+    created_item = await client.create_item(create_payload)
     item_id = created_item["id"]
 
     if ctx:
@@ -187,7 +187,7 @@ async def handle_create_item(
             if key not in update_payload:
                 update_payload[key] = "0001-01-01T00:00:00Z"
 
-        final_item = await client.request("PUT", f"items/{item_id}", json=update_payload)
+        final_item = await client.update_item(item_id, update_payload)
 
         if ctx:
             await ctx.report_progress(100, 100)
@@ -197,7 +197,7 @@ async def handle_create_item(
     except Exception as e:
         # Rollback
         try:
-            await client.request("DELETE", f"items/{item_id}")
+            await client.delete_item(item_id)
         except Exception:
             pass
         raise e
@@ -225,7 +225,7 @@ async def handle_update_item(
     if ctx:
         await ctx.info(f"Updating item {id}...")
 
-    existing = await client.request("GET", f"items/{id}")
+    existing = await client.get_item(id)
     update_payload = existing.copy()
 
     # Flatten object references
@@ -270,7 +270,7 @@ async def handle_update_item(
         if key not in update_payload:
             update_payload[key] = existing.get(key, "0001-01-01T00:00:00Z")
 
-    data = await client.request("PUT", f"items/{id}", json=update_payload)
+    data = await client.update_item(id, update_payload)
 
     if ctx:
         await ctx.info(f"Item {id} updated successfully.")
@@ -295,34 +295,34 @@ async def handle_patch_item(
     if label_ids:
         payload["labelIds"] = label_ids
 
-    return await client.request("PATCH", f"items/{id}", json=payload)
+    return await client.patch_item(id, payload)
 
 
 @protect_resource(resource_type="items", action="delete")
 async def handle_delete_item(client: HomeboxClient, id: str) -> str:
     """Delete an item by ID."""
-    await client.request("DELETE", f"items/{id}")
+    await client.delete_item(id)
     return f"Deleted item {id}"
 
 
 async def handle_get_item_by_asset_id(client: HomeboxClient, id: str) -> dict:
     """Get Item by Asset ID."""
-    return await client.request("GET", f"assets/{id}")
+    return await client.get_item_by_asset_id(id)
 
 
 async def handle_export_items(client: HomeboxClient) -> str:
     """Export all items to CSV format."""
-    return await client.request("GET", "items/export")
+    return await client.export_items()
 
 
 async def handle_get_item_fields(client: HomeboxClient) -> list[str]:
     """Get all custom field names."""
-    return await client.request("GET", "items/fields")
+    return await client.get_item_fields()
 
 
 async def handle_get_item_field_values(client: HomeboxClient, field: str) -> list[str]:
     """Get all unique values for a specific custom field."""
-    return await client.request("GET", "items/fields/values", params={"field": field})
+    return await client.get_item_field_values(field)
 
 
 async def handle_duplicate_item(
@@ -340,22 +340,22 @@ async def handle_duplicate_item(
         "copyMaintenance": copy_maintenance,
         "copyPrefix": copy_prefix,
     }
-    return await client.request("POST", f"items/{id}/duplicate", json=payload)
+    return await client.duplicate_item(id, payload)
 
 
 async def handle_get_item_path(client: HomeboxClient, id: str) -> list[dict]:
     """Get the full breadcrumb path of an item's location."""
-    return await client.request("GET", f"items/{id}/path")
+    return await client.get_item_path(id)
 
 
 async def handle_get_item_attachment_token(client: HomeboxClient, id: str, attachment_id: str) -> dict:
     """Get the download details for an item attachment."""
-    return await client.request("GET", f"items/{id}/attachments/{attachment_id}")
+    return await client.get_item_attachment_token(id, attachment_id)
 
 
 async def handle_delete_item_attachment(client: HomeboxClient, id: str, attachment_id: str) -> str:
     """Permanently delete an item attachment."""
-    await client.request("DELETE", f"items/{id}/attachments/{attachment_id}")
+    await client.delete_item_attachment(id, attachment_id)
     return f"Deleted attachment {attachment_id} from item {id}"
 
 
@@ -368,7 +368,7 @@ async def handle_update_item_attachment(
     type: str | None = None,
 ) -> dict:
     """Update attachment metadata."""
-    item = await client.request("GET", f"items/{id}")
+    item = await client.get_item(id)
     existing = next((a for a in item.get("attachments", []) if a["id"] == attachment_id), None)
     if not existing:
         raise ValueError(f"Attachment {attachment_id} not found on item {id}")
@@ -379,12 +379,12 @@ async def handle_update_item_attachment(
         "type": type if type is not None else existing.get("type", "attachment"),
     }
 
-    return await client.request("PUT", f"items/{id}/attachments/{attachment_id}", json=payload)
+    return await client.update_item_attachment(id, attachment_id, payload)
 
 
 async def handle_get_item_maintenance(client: HomeboxClient, id: str, status: str = "both") -> list[dict]:
     """Get maintenance logs for a specific item."""
-    return await client.request("GET", f"items/{id}/maintenance", params={"status": status})
+    return await client.get_item_maintenance(id, status=status)
 
 
 async def handle_create_item_maintenance(
@@ -405,7 +405,7 @@ async def handle_create_item_maintenance(
         "scheduledDate": scheduled_date or now_iso,
         "completedDate": completed_date or "0001-01-01T00:00:00Z",
     }
-    return await client.request("POST", f"items/{id}/maintenance", json=payload)
+    return await client.create_item_maintenance(id, payload)
 
 
 async def handle_upload_item_attachment(
@@ -441,7 +441,7 @@ async def handle_upload_item_attachment(
     files = {"file": (file_name, file_content, mime_type)}
     attachment_meta = {"name": file_name, "type": attachment_type, "primary": "true" if primary else "false"}
 
-    return await client.request("POST", f"items/{item_id}/attachments", files=files, data=attachment_meta)
+    return await client.upload_item_attachment(item_id, files=files, data=attachment_meta)
 
 
 async def handle_import_items(client: HomeboxClient, file_path: str) -> str:
@@ -452,7 +452,7 @@ async def handle_import_items(client: HomeboxClient, file_path: str) -> str:
 
     file_content = await path.read_bytes()
     payload_files = {"csv": (path.name, file_content, "text/csv")}
-    await client.request("POST", "items/import", files=payload_files)
+    await client.import_items(files=payload_files)
     return "Items imported successfully."
 
 

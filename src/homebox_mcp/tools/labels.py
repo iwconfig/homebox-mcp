@@ -10,7 +10,7 @@ from ..guardrails import protect_resource
 
 async def handle_list_labels(client: HomeboxClient) -> list[dict]:
     """Get All Labels."""
-    return await client.request("GET", "labels")
+    return await client.list_labels()
 
 
 @protect_resource(resource_type="labels", action="create")
@@ -24,12 +24,12 @@ async def handle_create_label(
     if color:
         payload["color"] = color
 
-    return await client.request("POST", "labels", json=payload)
+    return await client.create_label(payload)
 
 
 async def handle_get_label(client: HomeboxClient, id: str) -> dict:
     """Get details for a specific label by ID."""
-    return await client.request("GET", f"labels/{id}")
+    return await client.get_label(id)
 
 
 @protect_resource(resource_type="labels", action="update")
@@ -37,7 +37,7 @@ async def handle_update_label(
     client: HomeboxClient, id: str, name: str | None = None, description: str | None = None, color: str | None = None
 ) -> dict:
     """Update an existing label."""
-    existing = await client.request("GET", f"labels/{id}")
+    existing = await client.get_label(id)
     payload = existing.copy()
 
     if name:
@@ -47,13 +47,13 @@ async def handle_update_label(
     if color:
         payload["color"] = color
 
-    return await client.request("PUT", f"labels/{id}", json=payload)
+    return await client.update_label(id, payload)
 
 
 @protect_resource(resource_type="labels", action="delete")
 async def handle_delete_label(client: HomeboxClient, id: str) -> str:
     """Delete a label by ID."""
-    await client.request("DELETE", f"labels/{id}")
+    await client.delete_label(id)
     return f"Deleted Label {id}"
 
 

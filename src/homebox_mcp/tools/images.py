@@ -21,11 +21,11 @@ async def handle_get_inbox_queue(client: HomeboxClient) -> list[dict[str, Any]]:
     items = []
 
     # 1. Fetch from Homebox API
-    locations = await client.request("GET", "locations")
+    locations = await client.list_locations()
     inbox_location = next((loc for loc in locations if loc["name"].lower() == "inbox"), None)
 
     if inbox_location:
-        inbox_items = await client.request("GET", "items", params={"locations": [inbox_location["id"]]})
+        inbox_items = await client.list_items(locations=[inbox_location["id"]])
         for item in inbox_items.get("items", []):
             items.append(
                 {
@@ -63,7 +63,7 @@ async def handle_get_inbox_image(client: HomeboxClient, id: str, attachment_id: 
         return Image(path=str(local_path))
 
     if not attachment_id:
-        item = await client.request("GET", f"items/{id}")
+        item = await client.get_item(id)
         attachments = item.get("attachments", [])
         if not attachments:
             raise ValueError(f"No attachments found for item {id}")
@@ -71,7 +71,7 @@ async def handle_get_inbox_image(client: HomeboxClient, id: str, attachment_id: 
         primary = next((a for a in attachments if a.get("primary")), attachments[0])
         attachment_id = primary["id"]
 
-    data = await client.request("GET", f"items/{id}/attachments/{attachment_id}", return_bytes=True)
+    data = await client.get_attachment_data(id, attachment_id)
     return Image(data=data, format="png")
 
 
@@ -133,14 +133,14 @@ async def handle_finalize_processed_item(
             "description": description or "",
             "labelIds": label_ids or [],
         }
-        item = await client.request("POST", "items", json=create_payload)
+        item = await client.create_item(create_payload)
         new_id = item["id"]
 
         try:
             # 2. Upload image
             files = {"file": (f"{name}.png", file_content, "image/png")}
             attach_data = {"name": name, "type": "photo", "primary": "true"}
-            await client.request("POST", f"items/{new_id}/attachments", files=files, data=attach_data)
+            await client.upload_item_attachment(new_id, files=files, data=attach_data)
 
             # 3. Final enrichment
             update_payload = item.copy()
@@ -167,7 +167,7 @@ async def handle_finalize_processed_item(
                 if not update_payload.get(key):
                     update_payload[key] = "0001-01-01T00:00:00Z"
 
-            await client.request("PUT", f"items/{new_id}", json=update_payload)
+            await client.update_item(new_id, update_payload)
 
             # 4. Cleanup
             await local_path.unlink()
@@ -175,13 +175,13 @@ async def handle_finalize_processed_item(
         except Exception as e:
             # Rollback: delete the partially created item
             try:
-                await client.request("DELETE", f"items/{new_id}")
+                await client.delete_item(new_id)
             except Exception:
                 pass
             raise e
     else:
         # Homebox item update
-        item = await client.request("GET", f"items/{id}")
+        item = await client.get_item(id)
         update_payload = item.copy()
 
         if "location" in item and item["location"]:
@@ -212,7 +212,7 @@ async def handle_finalize_processed_item(
             if not update_payload.get(key):
                 update_payload[key] = "0001-01-01T00:00:00Z"
 
-        await client.request("PUT", f"items/{id}", json=update_payload)
+        await client.update_item(id, update_payload)
 
         if rotation:
             attachments = item.get("attachments", [])
@@ -227,10 +227,10 @@ async def handle_crop_item_image(
     client: HomeboxClient, item_id: str, attachment_id: str, crop_box: list[int]
 ) -> dict[str, Any]:
     """Crops an item's image attachment and replaces the original."""
-    image_data = await client.request("GET", f"items/{item_id}/attachments/{attachment_id}", return_bytes=True)
+    image_data = await client.get_attachment_data(item_id, attachment_id)
     cropped_data = await to_thread.run_sync(_sync_image_ops, image_data, crop_box, None)
 
-    item = await client.request("GET", f"items/{item_id}")
+    item = await client.get_item(item_id)
     existing = next((a for a in item.get("attachments", []) if a["id"] == attachment_id), None)
     if not existing:
         raise ValueError(f"Attachment {attachment_id} not found")
@@ -243,10 +243,10 @@ async def handle_crop_item_image(
     }
 
     # 1. Upload new cropped version
-    await client.request("POST", f"items/{item_id}/attachments", files=files, data=attach_data)
+    await client.upload_item_attachment(item_id, files=files, data=attach_data)
 
     # 2. Delete old version
-    await client.request("DELETE", f"items/{item_id}/attachments/{attachment_id}")
+    await client.delete_item_attachment(item_id, attachment_id)
 
     return {"status": "success", "action": "cropped"}
 
@@ -255,10 +255,10 @@ async def handle_rotate_item_image(
     client: HomeboxClient, item_id: str, attachment_id: str, degrees: int
 ) -> dict[str, Any]:
     """Rotates an item's image attachment and replaces the original."""
-    image_data = await client.request("GET", f"items/{item_id}/attachments/{attachment_id}", return_bytes=True)
+    image_data = await client.get_attachment_data(item_id, attachment_id)
     rotated_data = await to_thread.run_sync(_sync_image_ops, image_data, None, degrees)
 
-    item = await client.request("GET", f"items/{item_id}")
+    item = await client.get_item(item_id)
     existing = next((a for a in item.get("attachments", []) if a["id"] == attachment_id), None)
     if not existing:
         raise ValueError(f"Attachment {attachment_id} not found")
@@ -271,10 +271,10 @@ async def handle_rotate_item_image(
     }
 
     # 1. Upload new rotated version
-    await client.request("POST", f"items/{item_id}/attachments", files=files, data=attach_data)
+    await client.upload_item_attachment(item_id, files=files, data=attach_data)
 
     # 2. Delete old version
-    await client.request("DELETE", f"items/{item_id}/attachments/{attachment_id}")
+    await client.delete_item_attachment(item_id, attachment_id)
 
     return {"status": "success", "action": "rotated"}
 
@@ -293,11 +293,11 @@ async def handle_split_item_from_image(
         source_data = await path.read_bytes()
     else:
         if not attachment_id:
-            item = await client.request("GET", f"items/{id}")
+            item = await client.get_item(id)
             attachments = item.get("attachments", [])
             primary = next((a for a in attachments if a.get("primary")), attachments[0])
             attachment_id = primary["id"]
-        source_data = await client.request("GET", f"items/{id}/attachments/{attachment_id}", return_bytes=True)
+        source_data = await client.get_attachment_data(id, attachment_id)
 
     results = []
     total = len(extracted_objects)
@@ -316,14 +316,14 @@ async def handle_split_item_from_image(
             "description": obj.get("description", ""),
             "labelIds": obj.get("label_ids") or obj.get("labelIds") or [],
         }
-        new_item = await client.request("POST", "items", json=create_payload)
+        new_item = await client.create_item(create_payload)
         new_id = new_item["id"]
 
         try:
             # 2. Upload cutout
             files = {"file": (f"{obj['name']}.png", obj_data, "image/png")}
             attach_data = {"name": obj["name"], "type": "photo", "primary": "true"}
-            await client.request("POST", f"items/{new_id}/attachments", files=files, data=attach_data)
+            await client.upload_item_attachment(new_id, files=files, data=attach_data)
 
             # 3. Final enrichment
             update_payload = new_item.copy()
@@ -347,12 +347,12 @@ async def handle_split_item_from_image(
                 if not update_payload.get(key):
                     update_payload[key] = "0001-01-01T00:00:00Z"
 
-            await client.request("PUT", f"items/{new_id}", json=update_payload)
+            await client.update_item(new_id, update_payload)
             results.append(new_id)
         except Exception as e:
             # Rollback: delete the partially created sub-item
             try:
-                await client.request("DELETE", f"items/{new_id}")
+                await client.delete_item(new_id)
             except Exception:
                 pass
             raise e
@@ -365,7 +365,7 @@ async def handle_split_item_from_image(
         path = anyio.Path(INBOX_DIR) / id
         await path.unlink()
     else:
-        await client.request("DELETE", f"items/{id}")
+        await client.delete_item(id)
 
     return {"status": "success", "created_ids": results, "action": "split"}
 

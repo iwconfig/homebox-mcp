@@ -9,7 +9,7 @@ from ..client import HomeboxClient
 
 async def handle_get_group(client: HomeboxClient) -> dict:
     """Get current group information."""
-    return await client.request("GET", "groups")
+    return await client.get_group()
 
 
 async def handle_update_group(client: HomeboxClient, name: str | None = None, currency: str | None = None) -> dict:
@@ -20,7 +20,7 @@ async def handle_update_group(client: HomeboxClient, name: str | None = None, cu
     if currency:
         payload["currency"] = currency
 
-    return await client.request("PUT", "groups", json=payload)
+    return await client.update_group(payload)
 
 
 async def handle_create_group_invitation(client: HomeboxClient, uses: int = 1, expires_at: str | None = None) -> dict:
@@ -29,40 +29,34 @@ async def handle_create_group_invitation(client: HomeboxClient, uses: int = 1, e
     if expires_at:
         payload["expiresAt"] = expires_at
 
-    return await client.request("POST", "groups/invitations", json=payload)
+    return await client.create_group_invitation(payload)
 
 
 async def handle_get_group_statistics(client: HomeboxClient) -> dict:
     """Get overall group statistics."""
-    return await client.request("GET", "groups/statistics")
+    return await client.get_group_statistics()
 
 
 async def handle_get_label_statistics(client: HomeboxClient) -> dict:
     """Get item counts and values per label."""
-    return await client.request("GET", "groups/statistics/labels")
+    return await client.get_group_statistics_labels()
 
 
 async def handle_get_location_statistics(client: HomeboxClient) -> dict:
     """Get item counts and values per location."""
-    return await client.request("GET", "groups/statistics/locations")
+    return await client.get_group_statistics_locations()
 
 
 async def handle_get_purchase_price_statistics(
     client: HomeboxClient, start: str | None = None, end: str | None = None
 ) -> dict:
     """Get purchase price history within a date range."""
-    params = {}
-    if start:
-        params["start"] = start
-    if end:
-        params["end"] = end
-
-    return await client.request("GET", "groups/statistics/purchase-price", params=params)
+    return await client.get_purchase_price_statistics(start=start, end=end)
 
 
 async def handle_export_bom(client: HomeboxClient) -> str:
     """Export the Bill of Materials."""
-    data = await client.request("GET", "reporting/bill-of-materials")
+    data = await client.export_bom()
     return str(data)
 
 

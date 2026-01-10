@@ -10,31 +10,31 @@ from ..guardrails import protect_resource
 
 async def handle_create_missing_thumbnails(client: HomeboxClient) -> str:
     """Creates thumbnails for items that are missing them."""
-    await client.request("POST", "actions/create-missing-thumbnails")
+    await client.create_missing_thumbnails()
     return "Action triggered: Create missing thumbnails"
 
 
 async def handle_ensure_asset_ids(client: HomeboxClient) -> str:
     """Ensures all items in the database have an asset ID."""
-    await client.request("POST", "actions/ensure-asset-ids")
+    await client.ensure_asset_ids()
     return "Action triggered: Ensure asset IDs"
 
 
 async def handle_ensure_import_refs(client: HomeboxClient) -> str:
     """Ensures all items in the database have an import ref."""
-    await client.request("POST", "actions/ensure-import-refs")
+    await client.ensure_import_refs()
     return "Action triggered: Ensure import refs"
 
 
 async def handle_set_primary_photos(client: HomeboxClient) -> str:
     """Sets the first photo of each item as the primary photo."""
-    await client.request("POST", "actions/set-primary-photos")
+    await client.set_primary_photos()
     return "Action triggered: Set primary photos"
 
 
 async def handle_zero_item_time_fields(client: HomeboxClient) -> str:
     """Resets all item date fields to the beginning of the day (Go zero time)."""
-    await client.request("POST", "actions/zero-item-time-fields")
+    await client.zero_item_time_fields()
     return "Action triggered: Zero item time fields"
 
 
@@ -48,7 +48,7 @@ async def handle_wipe_inventory(
         "wipeLabels": wipe_labels,
         "wipeMaintenance": wipe_maintenance
     }
-    await client.request("POST", "actions/wipe-inventory", json=payload)
+    await client.wipe_inventory(payload)
     return "Action triggered: Wipe inventory"
 
 

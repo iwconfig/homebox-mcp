@@ -46,9 +46,13 @@ async def test_user_lifecycle():
         new_pass = "Password123!"
 
         res = await server_session.call_tool(
-            "register_user", {"name": new_name, "email": new_email, "password": new_pass}
+            "register_user", {"name": new_name, "email": new_email, "password": new_pass},
+            raise_on_error=False
         )
-        assert not res.is_error
+        if res.is_error:
+            if "403" in res.content[0].text or "disabled" in res.content[0].text.lower():
+                pytest.skip("User registration is disabled on this Homebox instance.")
+            assert not res.is_error
 
         # 3. Login
         res = await server_session.call_tool(

@@ -10,7 +10,7 @@ from ..guardrails import protect_resource
 
 async def handle_list_templates(client: HomeboxClient) -> list[dict]:
     """Get All Item Templates."""
-    return await client.request("GET", "templates")
+    return await client.list_templates()
 
 
 @protect_resource(resource_type="templates", action="create")
@@ -67,12 +67,12 @@ async def handle_create_template(
         }
     )
 
-    return await client.request("POST", "templates", json=payload)
+    return await client.create_template(payload)
 
 
 async def handle_get_template(client: HomeboxClient, id: str) -> dict:
     """Get full details for a specific template by ID."""
-    return await client.request("GET", f"templates/{id}")
+    return await client.get_template(id)
 
 
 @protect_resource(resource_type="templates", action="update")
@@ -97,7 +97,7 @@ async def handle_update_template(
     include_warranty_fields: bool | None = None,
 ) -> dict:
     """Update an existing template."""
-    existing = await client.request("GET", f"templates/{id}")
+    existing = await client.get_template(id)
     payload = existing.copy()
 
     if name:
@@ -133,13 +133,13 @@ async def handle_update_template(
     if include_warranty_fields is not None:
         payload["includeWarrantyFields"] = include_warranty_fields
 
-    return await client.request("PUT", f"templates/{id}", json=payload)
+    return await client.update_template(id, payload)
 
 
 @protect_resource(resource_type="templates", action="delete")
 async def handle_delete_template(client: HomeboxClient, id: str) -> str:
     """Delete a template by ID."""
-    await client.request("DELETE", f"templates/{id}")
+    await client.delete_template(id)
     return f"Deleted Template {id}"
 
 
@@ -159,7 +159,7 @@ async def handle_create_item_from_template(
     if label_ids:
         payload["labelIds"] = label_ids
 
-    return await client.request("POST", f"templates/{id}/create-item", json=payload)
+    return await client.create_item_from_template(id, payload)
 
 
 # --- Registration ---
