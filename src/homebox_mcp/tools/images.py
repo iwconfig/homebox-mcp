@@ -115,6 +115,9 @@ async def handle_finalize_processed_item(
     if extracted_objects:
         return await handle_split_item_from_image(client, id, extracted_objects, source=source, ctx=ctx)
 
+    if ctx:
+        await ctx.report_progress(10, 100, f"Preparing to finalize {name}...")
+
     if source == "local":
         local_path = anyio.Path(INBOX_DIR) / id
         if not await local_path.exists():
@@ -123,9 +126,13 @@ async def handle_finalize_processed_item(
         file_content = await local_path.read_bytes()
 
         if rotation:
+            if ctx:
+                await ctx.report_progress(30, 100, "Rotating image...")
             file_content = await to_thread.run_sync(_sync_image_ops, file_content, None, rotation)
 
         # 1. Create item
+        if ctx:
+            await ctx.report_progress(50, 100, "Creating item in Homebox...")
         create_payload = {
             "name": name,
             "locationId": location_id,
@@ -138,11 +145,15 @@ async def handle_finalize_processed_item(
 
         try:
             # 2. Upload image
+            if ctx:
+                await ctx.report_progress(70, 100, "Uploading image attachment...")
             files = {"file": (f"{name}.png", file_content, "image/png")}
             attach_data = {"name": name, "type": "photo", "primary": "true"}
             await client.upload_item_attachment(new_id, files=files, data=attach_data)
 
             # 3. Final enrichment
+            if ctx:
+                await ctx.report_progress(90, 100, "Applying final metadata...")
             update_payload = item.copy()
             # Flatten location and labels for the PUT payload
             if "location" in item and item["location"]:
@@ -171,6 +182,8 @@ async def handle_finalize_processed_item(
 
             # 4. Cleanup
             await local_path.unlink()
+            if ctx:
+                await ctx.report_progress(100, 100, "Item created and finalized successfully.")
             return {"status": "success", "id": new_id, "action": "created_from_local"}
         except Exception as e:
             # Rollback: delete the partially created item
@@ -181,9 +194,13 @@ async def handle_finalize_processed_item(
             raise e
     else:
         # Homebox item update
+        if ctx:
+            await ctx.report_progress(30, 100, "Fetching existing item...")
         item = await client.get_item(id)
         update_payload = item.copy()
 
+        if ctx:
+            await ctx.report_progress(50, 100, "Updating metadata...")
         if "location" in item and item["location"]:
             update_payload["locationId"] = item["location"]["id"]
         if "labels" in item and item["labels"]:
@@ -193,11 +210,11 @@ async def handle_finalize_processed_item(
             {
                 "name": name,
                 "locationId": location_id,
-                "description": description if description is not None else update_payload.get("description", ""),
-                "manufacturer": manufacturer if manufacturer is not None else update_payload.get("manufacturer", ""),
-                "modelNumber": model_number if model_number is not None else update_payload.get("modelNumber", ""),
-                "serialNumber": serial_number if serial_number is not None else update_payload.get("serialNumber", ""),
-                "notes": notes if notes is not None else update_payload.get("notes", ""),
+                "description": description or update_payload.get("description", ""),
+                "manufacturer": manufacturer or update_payload.get("manufacturer", ""),
+                "modelNumber": model_number or update_payload.get("modelNumber", ""),
+                "serialNumber": serial_number or update_payload.get("serialNumber", ""),
+                "notes": notes or update_payload.get("notes", ""),
             }
         )
 
@@ -215,12 +232,16 @@ async def handle_finalize_processed_item(
         await client.update_item(id, update_payload)
 
         if rotation:
+            if ctx:
+                await ctx.report_progress(80, 100, "Applying rotation...")
             attachments = item.get("attachments", [])
-            if attachments:
-                primary = next((a for a in attachments if a.get("primary")), attachments[0])
-                await handle_rotate_item_image(client, id, primary["id"], rotation)
+            primary = next((a for a in attachments if a.get("primary")), attachments[0] if attachments else None)
+            if primary:
+                await client.rotate_item_image(id, primary["id"], rotation)
 
-        return {"status": "success", "id": id, "action": "updated_homebox_item"}
+        if ctx:
+            await ctx.report_progress(100, 100, "Item finalized successfully.")
+        return {"status": "success", "id": id, "action": "updated"}
 
 
 async def handle_crop_item_image(

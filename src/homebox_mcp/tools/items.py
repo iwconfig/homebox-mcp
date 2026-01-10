@@ -444,15 +444,25 @@ async def handle_upload_item_attachment(
     return await client.upload_item_attachment(item_id, files=files, data=attachment_meta)
 
 
-async def handle_import_items(client: HomeboxClient, file_path: str) -> str:
+async def handle_import_items(client: HomeboxClient, file_path: str, ctx: Context | None = None) -> str:
     """Import items from a CSV file."""
+    if ctx:
+        await ctx.report_progress(10, 100, f"Reading file {file_path}...")
+
     path = anyio.Path(file_path)
     if not await path.exists():
         raise FileNotFoundError(f"File not found at {file_path}")
 
+    if ctx:
+        await ctx.report_progress(30, 100, "Uploading CSV to Homebox...")
+
     file_content = await path.read_bytes()
     payload_files = {"csv": (path.name, file_content, "text/csv")}
     await client.import_items(files=payload_files)
+
+    if ctx:
+        await ctx.report_progress(100, 100, "Import completed successfully.")
+
     return "Items imported successfully."
 
 
@@ -708,9 +718,9 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         )
 
     @mcp.tool()
-    async def import_items(file_path: Annotated[str, "Local path to the CSV file"]) -> str:
+    async def import_items(file_path: Annotated[str, "Local path to the CSV file"], ctx: Context | None = None) -> str:
         """Import items from a CSV file."""
-        return await handle_import_items(client, file_path=file_path)
+        return await handle_import_items(client, file_path=file_path, ctx=ctx)
 
     @mcp.tool()
     async def get_item_image(id: Annotated[str, "ID of the item"]) -> Image:

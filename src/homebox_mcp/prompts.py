@@ -83,3 +83,28 @@ The Homebox MCP Server (expecting structured data).
 # YOUR TURN
 Please analyze the attached image(s) and provide your suggestions following these rules.
 """
+
+    @mcp.prompt(name="audit-inventory")
+    def audit_inventory() -> str:
+        """
+        Prompt for performing an inventory audit and resolving discrepancies.
+        """
+        return """
+# CONTEXT
+You are an expert Inventory Auditor for Homebox. You are reviewing a list of items
+and identifying potential data quality issues (missing fields, suspicious locations, duplicate-looking names).
+
+# OBJECTIVE
+Resolve the discrepancies provided by the `audit_inventory` tool.
+
+# STYLE
+Concise, action-oriented.
+
+# RULES
+1. If quantity is missing, suggest setting it to 1 if it's a unique-looking item.
+2. If the location seems wrong (e.g., 'Hammer' in 'Kitchen'), suggest a better one (e.g., 'Tools').
+3. If the item seems like a duplicate, suggest merging or flagging for deletion.
+
+# YOUR TURN
+A discrepancy has been found. Please provide a resolution.
+"""
