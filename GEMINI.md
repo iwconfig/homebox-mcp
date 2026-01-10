@@ -94,6 +94,38 @@ The guardrails follow a three-tier lockdown strategy to balance flexibility and 
     - Updated `HomeboxClient.request` to gracefully handle `json.JSONDecodeError`. If the server returns `Content-Type: application/json` but the body is HTML or a raw stack trace (common in 500 errors), the client now logs a warning and returns the text instead of crashing.
     - Added `test_request_json_decode_error` to verify this resilience.
 
+## Date: 2026-01-10
+
+### Major Upgrade: FastMCP 2.0 & Vision Robustness
+- **Framework Upgrade**: Migrated the entire codebase to **FastMCP 2.0**, leveraging nested tool registration and enhanced client capabilities.
+- **Python Compatibility**: Verified and fixed issues for **Python 3.13**, ensuring long-term compatibility.
+- **Vision Integration**: Implemented robust vision tools (inbox splitting, image analysis) with specialized rollback logic to prevent orphaned data on failure.
+- **Test Suite Overhaul**:
+    - Migrated all integration tests to use the idiomatic `fastmcp.Client` and `StdioTransport`.
+    - Achieved **100% Pass Rate** across 91 unit and integration tests.
+    - Implemented a dedicated `test_vision.py` suite to verify multi-step vision pipelines.
+
+### Roadmap: Advanced MCP Features
+We are now entering the advanced features phase, aiming to leverage the full power of the MCP protocol.
+
+#### 1. Resources (`homebox://`)
+Direct data access without tool calls. This is the priority.
+- `homebox://items/{id}`: Read item details by UUID.
+- `homebox://assets/{id}`: Read item details by Asset ID (e.g., `1234`).
+- `homebox://locations/tree`: Read the full location hierarchy.
+- **Goal**: Enable efficient, read-only access to key data structures.
+
+#### 2. Prompts (`mcp.prompt`)
+Standardized workflows for common tasks.
+- `inventory-audit`: Guides the user through verifying items in a specific location.
+- `label-printing`: Generates ZPL/brother label content for an item.
+- `analyze-item`: (Already implemented) Vision analysis prompt.
+
+#### 3. Context & Sampling
+Leveraging the agent's capabilities.
+- **Context**: Use `ctx.info.client_capabilities` to adapt tool output (e.g., markdown vs plain text).
+- **Sampling**: Allow the server to ask the *agent* to clarify ambiguous inputs (e.g., "I found two items named 'Hammer', which one did you mean?").
+
 ## Usage
 
 ### Testing with Pytest
@@ -106,27 +138,6 @@ Run the following to test tools in a web UI:
 ```bash
 npx @modelcontextprotocol/inspector .venv/bin/python -m homebox_mcp.server
 ```
-
-## Lessons Learned
-- **Python f-strings**: Always check for double braces `{{` vs `{` in format strings to avoid `TypeError: unhashable type: 'dict'` or syntax errors.
-- **Go Struct Tags**: The actual parameter keys decoded by the Homebox backend sometimes mismatch the Swagger documentation (e.g., `productEAN` vs `data`). Always verify against the backend source code when debugging `decoding error` or `404`.
-- **Strict JSON Unmarshaling**: Some Go backends require numeric fields to be quoted as strings if they use the `,string` struct tag.
-- **Task Isolation**: When using `anyio` with `pytest`, ensure server sessions are closed within the same task they were created in to avoid `RuntimeError`.
-- **Mocking Fidelity**: Generic smoke tests that loop over tools are insufficient for verifying parameter mapping. Explicit assertions for every tool call (checking `params` and `json` payloads) are necessary to catch regressions in argument handling.
-
-
-### Manual Testing
-Individual tests are located in `./tests`. You can run them by category:
-```bash
-.venv/bin/pytest tests/test_items.py
-.venv/bin/pytest tests/test_user_guardrails.py
-```
-
-### Running over SSE
-```bash
-python -m homebox_mcp.server sse
-```
-Point your client to `http://localhost:8000/sse`.
 
 ### AI Client Configuration
 ```json
