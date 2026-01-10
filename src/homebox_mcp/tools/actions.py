@@ -43,12 +43,12 @@ async def handle_wipe_inventory(
     client: HomeboxClient, wipe_locations: bool = False, wipe_labels: bool = False, wipe_maintenance: bool = False
 ) -> str:
     """DANGEROUS: Deletes ALL items in the inventory."""
-    params = {
-        "wipeLocations": str(wipe_locations).lower(),
-        "wipeLabels": str(wipe_labels).lower(),
-        "wipeMaintenance": str(wipe_maintenance).lower(),
+    payload = {
+        "wipeLocations": wipe_locations,
+        "wipeLabels": wipe_labels,
+        "wipeMaintenance": wipe_maintenance
     }
-    await client.request("POST", "actions/wipe-inventory", params=params)
+    await client.request("POST", "actions/wipe-inventory", json=payload)
     return "Action triggered: Wipe inventory"
 
 
