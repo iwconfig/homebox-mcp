@@ -162,8 +162,18 @@ class HomeboxClient:
             # Log error bodies for 4xx/5xx responses
             if response.status_code >= 400:
                 logger.error(f"API Error Response Body: {response.text}")
-
-            response.raise_for_status()
+                # Provide a more descriptive error message to the tool
+                try:
+                    error_json = response.json()
+                    error_msg = error_json.get("error", response.text)
+                except Exception:
+                    error_msg = response.text
+                
+                raise httpx.HTTPStatusError(
+                    f"Homebox API error {response.status_code}: {error_msg}",
+                    request=response.request,
+                    response=response
+                )
 
             if response.status_code == 204:
                 return None

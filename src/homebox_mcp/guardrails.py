@@ -177,7 +177,11 @@ def protect_resource(resource_type: str, action: str):
             # 0. Safety Switch Checks (Tier 1)
             if resource_type == "inventory" and action == "delete":
                 if os.getenv("HOMEBOX_ALLOW_WIPE_INVENTORY", "false").lower() != "true":
-                    raise ValueError("Wipe Inventory is disabled via safety switch (HOMEBOX_ALLOW_WIPE_INVENTORY).")
+                    raise ValueError("Action 'wipe_inventory' is disabled via safety switch (HOMEBOX_ALLOW_WIPE_INVENTORY).")
+
+            if resource_type == "users" and action == "create":
+                if os.getenv("HOMEBOX_ALLOW_USER_REGISTRATION", "false").lower() != "true":
+                    raise ValueError("Action 'register_user' is disabled via safety switch (HOMEBOX_ALLOW_USER_REGISTRATION).")
 
             # Inspect arguments to find 'id' if present
             sig = inspect.signature(func)

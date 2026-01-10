@@ -4,7 +4,7 @@ from typing import Annotated
 from fastmcp import FastMCP
 
 from ..client import HomeboxClient
-from ..guardrails import protect_user_self
+from ..guardrails import protect_user_self, protect_resource
 
 # --- Tool Handlers ---
 
@@ -36,11 +36,9 @@ async def handle_change_password(client: HomeboxClient, current: str, new: str) 
         raise e
 
 
+@protect_resource(resource_type="users", action="create")
 async def handle_register_user(client: HomeboxClient, name: str, email: str, password: str) -> dict | None:
     """Register New User."""
-    if os.getenv("HOMEBOX_ALLOW_USER_REGISTRATION", "false").lower() != "true":
-        raise ValueError("User registration is disabled via safety switch (HOMEBOX_ALLOW_USER_REGISTRATION).")
-
     payload = {"name": name, "email": email, "password": password}
     return await client.register_user(payload)
 

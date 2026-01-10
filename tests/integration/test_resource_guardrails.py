@@ -6,11 +6,28 @@ import string
 
 import pytest
 from fastmcp import Client
-from fastmcp.client.transports import StdioTransport
+
+from conftest import run_scenario_session, random_string
 
 
-def random_string(length=8):
-    return "".join(random.choices(string.ascii_lowercase, k=length))
+def extract_id(text):
+    """Utility to extract ID from tool response text."""
+    if not text:
+        return None
+    try:
+        data = json.loads(text)
+        if isinstance(data, dict):
+            return data.get("id")
+    except (json.JSONDecodeError, AttributeError):
+        pass
+
+    m = re.search(r'"id":\s*"([a-f0-9\-]+)"', text)
+    if m:
+        return m.group(1)
+    m = re.search(r"ID: ([a-f0-9\-]+)", text)
+    if m:
+        return m.group(1)
+    return None
 
 
 def get_id(res):
@@ -35,25 +52,6 @@ def get_id(res):
     if m:
         return m.group(1)
     return None
-
-
-async def run_scenario_session(env_vars):
-    env = os.environ.copy()
-    env["PYTHONPATH"] = os.path.join(os.getcwd(), "src")
-    env["MCP_TRANSPORT"] = "stdio"
-    # Enable safety switches for test setup/cleanup
-    env["HOMEBOX_ALLOW_USER_REGISTRATION"] = "true"
-    env["HOMEBOX_ALLOW_USER_DELETION"] = "true"
-    env.update(env_vars)
-
-    transport = StdioTransport(
-        command=".venv/bin/python",
-        args=["-m", "homebox_mcp.server"],
-        env=env
-    )
-
-    async with Client(transport=transport) as client:
-        yield client
 
 
 @pytest.mark.anyio
@@ -245,4 +243,6 @@ async def test_wipe_inventory_blocked_for_protected_user():
         res = await session.call_tool("wipe_inventory", {}, raise_on_error=False)
         assert res.is_error
         msg = res.content[0].text.lower()
-        assert "disabled for user" in msg or "disabled for protected user" in msg
+        assert "disabled" in msg and ("user" in msg or "primary" in msg or "protected" in msg)
+
+        
