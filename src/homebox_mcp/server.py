@@ -8,6 +8,7 @@ from fastmcp import FastMCP
 
 from homebox_mcp.client import HomeboxClient
 from homebox_mcp.prompts import register_all_prompts
+from homebox_mcp.resources import register_all_resources
 from homebox_mcp.tools import register_all_tools
 
 # Configure logging
@@ -41,9 +42,10 @@ mcp = FastMCP(
     instructions="MCP server for Homebox inventory management system",
 )
 
-# Register all tools and prompts with the server instance
+# Register all tools, prompts and resources with the server instance
 register_all_tools(mcp, client)
 register_all_prompts(mcp)
+register_all_resources(mcp, client)
 
 
 def main():
