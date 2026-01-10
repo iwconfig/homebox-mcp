@@ -96,35 +96,32 @@ The guardrails follow a three-tier lockdown strategy to balance flexibility and 
 
 ## Date: 2026-01-10
 
-### Major Upgrade: FastMCP 2.0 & Vision Robustness
+### Major Upgrade: FastMCP 2.0 & Advanced Interactions
 - **Framework Upgrade**: Migrated the entire codebase to **FastMCP 2.0**, leveraging nested tool registration and enhanced client capabilities.
-- **Python Compatibility**: Verified and fixed issues for **Python 3.13**, ensuring long-term compatibility.
+- **SDK-First Refactor**: Re-implemented all tools to use the new `HomeboxClient` SDK, improving code maintainability and type safety.
+- **Advanced Error Handling (Gold Standard)**:
+    - Reconfigured `HomeboxClient` to bubble up backend exceptions (403/404) instead of swallowing them.
+    - Updated the entire test suite to explicitly assert HTTP status codes and error messages.
+    - Resolved "Output validation error" issues by removing strict `output_schema` and using flexible return hints (`dict | str`).
+- **MCP Resources (`homebox://`)**:
+    - Implemented a full suite of resources for Items, Locations, Labels, Maintenance, and System Status.
+    - Enabled direct, read-only data access following the MCP URI scheme.
+- **Context & Progress**:
+    - Integrated `ctx.report_progress` into long-running operations: `wipe_inventory`, `import_items`, and multi-step image processing (`finalize_processed_item`).
+    - Enhanced user experience by providing real-time feedback during bulk tasks.
+- **Sampling & Human-in-the-loop**:
+    - Implemented `audit_inventory` tool which uses `ctx.sample` to resolve discrepancies interactively with the user.
+- **Prompt Engineering (CO-STAR)**:
+    - Enhanced `analyze-item` prompt and added `audit-inventory` prompt following the CO-STAR framework (Context, Objective, Style, Tone, Audience, Rules) with Few-Shot examples.
 - **Vision Integration**: Implemented robust vision tools (inbox splitting, image analysis) with specialized rollback logic to prevent orphaned data on failure.
-- **Test Suite Overhaul**:
-    - Migrated all integration tests to use the idiomatic `fastmcp.Client` and `StdioTransport`.
+- **Test Suite Completion**:
     - Achieved **100% Pass Rate** across 91 unit and integration tests.
-    - Implemented a dedicated `test_vision.py` suite to verify multi-step vision pipelines.
+    - Verified compatibility with **Python 3.13**.
 
-### Roadmap: Advanced MCP Features
-We are now entering the advanced features phase, aiming to leverage the full power of the MCP protocol.
-
-#### 1. Resources (`homebox://`)
-Direct data access without tool calls. This is the priority.
-- `homebox://items/{id}`: Read item details by UUID.
-- `homebox://assets/{id}`: Read item details by Asset ID (e.g., `1234`).
-- `homebox://locations/tree`: Read the full location hierarchy.
-- **Goal**: Enable efficient, read-only access to key data structures.
-
-#### 2. Prompts (`mcp.prompt`)
-Standardized workflows for common tasks.
-- `inventory-audit`: Guides the user through verifying items in a specific location.
-- `label-printing`: Generates ZPL/brother label content for an item.
-- `analyze-item`: (Already implemented) Vision analysis prompt.
-
-#### 3. Context & Sampling
-Leveraging the agent's capabilities.
-- **Context**: Use `ctx.info.client_capabilities` to adapt tool output (e.g., markdown vs plain text).
-- **Sampling**: Allow the server to ask the *agent* to clarify ambiguous inputs (e.g., "I found two items named 'Hammer', which one did you mean?").
+### Roadmap: Future Enhancements
+- **Sampling Depth**: Implement multi-turn discrepancy resolution using nested `sample_step` calls.
+- **Streaming UI**: Explore sending base64-encoded image updates via `ctx.info` for real-time crop visualization.
+- **ZPL Label Service**: Add a dedicated resource for generating Brother/ZPL label streams.
 
 ## Usage
 
