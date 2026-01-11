@@ -167,3 +167,67 @@ async def test_handle_create_item_parent_suggestion_accepted(mock_client, mock_c
     
     create_payload = mock_client.create_item.call_args[0][0]
     assert create_payload["parentId"] == "parent-uuid"
+
+@pytest.mark.asyncio
+async def test_fuzzy_resolve_id_multiple_matches_elicitation(mock_client, mock_ctx):
+    """Verify that fuzzy_resolve_id uses elicitation when multiple matches found."""
+    from homebox_mcp.tools._helpers import fuzzy_resolve_id
+    from fastmcp.server.context import AcceptedElicitation
+    
+    # 1. Mock get_location failure
+    resp = MagicMock(spec=httpx.Response)
+    resp.status_code = 404
+    error = httpx.HTTPStatusError("Not Found", request=MagicMock(), response=resp)
+    mock_client.get_location.side_effect = error
+    
+    # 2. Mock list_locations returning multiple matches
+    mock_client.list_locations.return_value = [
+        {"id": "loc-1", "name": "Storage A"},
+        {"id": "loc-2", "name": "Storage B"},
+    ]
+    
+    # 3. Mock elicitation success
+    # We simulate selecting "Storage B"
+    mock_ctx.elicit.return_value = AcceptedElicitation(
+        data="Storage B (loc-2)"
+    )
+    
+    # 4. Call resolve
+    result = await fuzzy_resolve_id(mock_client, "locations", "Storage", ctx=mock_ctx)
+    
+    # 5. Verify
+    assert result == "loc-2"
+    assert mock_ctx.elicit.called
+    assert mock_ctx.elicit.call_args[1]["response_type"] == [
+        "Storage A (loc-1)",
+        "Storage B (loc-2)"
+    ]
+
+@pytest.mark.asyncio
+async def test_fuzzy_resolve_id_multiple_matches_fallback(mock_client, mock_ctx):
+    """Verify that fuzzy_resolve_id falls back to sampling if elicitation fails."""
+    from homebox_mcp.tools._helpers import fuzzy_resolve_id
+    
+    resp = MagicMock(spec=httpx.Response)
+    resp.status_code = 404
+    error = httpx.HTTPStatusError("Not Found", request=MagicMock(), response=resp)
+    mock_client.get_location.side_effect = error
+    
+    mock_client.list_locations.return_value = [
+        {"id": "loc-1", "name": "Storage A"},
+        {"id": "loc-2", "name": "Storage B"},
+    ]
+    
+    # Elicit raises exception
+    mock_ctx.elicit.side_effect = Exception("Not supported")
+    
+    # Sampling returns "2"
+    mock_ctx.sample.return_value = MagicMock(text="2")
+    
+    result = await fuzzy_resolve_id(mock_client, "locations", "Storage", ctx=mock_ctx)
+    
+    assert result == "loc-2"
+    assert mock_ctx.sample.called
+    prompt = mock_ctx.sample.call_args[1]["messages"][0]
+    assert "1. Storage A (loc-1)" in prompt
+    assert "2. Storage B (loc-2)" in prompt

@@ -511,3 +511,26 @@ async def test_upload_attachment_from_url_no_extension(mock_client):
         filename = files["file"][0]
         # Should have appended .png based on image/png
         assert filename == "random-id.png"
+
+@pytest.mark.asyncio
+async def test_handle_get_item_image(mock_client):
+    """Test retrieving item image."""
+    item_id = "item-1"
+    
+    # Mock get_item response with attachments
+    mock_client.request.side_effect = [
+        {"id": item_id, "attachments": [{"id": "att-1", "primary": True}]}, # get item
+        b"\x89PNG\r\n\x1a\n" # get attachment data (bytes)
+    ]
+    
+    result = await handle_get_item_image(mock_client, item_id)
+    
+    assert isinstance(result, Image)
+    assert result.data == b"\x89PNG\r\n\x1a\n"
+    # FastMCP Image calculates mime_type from format or path
+    assert result._mime_type == "image/png"
+    
+    # Verify calls
+    assert mock_client.request.call_count == 2
+    assert mock_client.request.call_args_list[0][0][1] == f"items/{item_id}"
+    assert mock_client.request.call_args_list[1][0][1] == f"items/{item_id}/attachments/att-1"

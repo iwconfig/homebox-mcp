@@ -152,12 +152,16 @@ class HomeboxClient:
         headers = kwargs.pop("headers", {})
         headers["Authorization"] = f"Bearer {self.token}"
 
+        logger.info(f"API Request: {method} {url}")
+        
         # Debug logging for complex request payloads
         if "json" in kwargs:
-            logger.info(f"API Request Body: {json.dumps(kwargs['json'])}")
+            logger.debug(f"API Request Body: {json.dumps(kwargs['json'])}")
 
         try:
             response = await self.client.request(method, url, headers=headers, **kwargs)
+            
+            logger.info(f"API Response: {method} {url} - {response.status_code}")
 
             # Log error bodies for 4xx/5xx responses
             if response.status_code >= 400:

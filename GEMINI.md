@@ -123,6 +123,19 @@ The guardrails follow a three-tier lockdown strategy to balance flexibility and 
     - Achieved **100% Pass Rate** across 95 unit and integration tests.
     - Verified compatibility with **Python 3.13**.
 
+## Date: 2026-01-11
+
+### Feature: Enhanced UX & Robustness
+- **Image Resources**: Added direct image access via `homebox://items/{id}/image` and `homebox://locations/{id}/label`.
+- **MIME Type Precision**: Updated all resources with explicit MIME types (`application/json` for data, `image/png` for images).
+- **Multi-Match Elicitation**: Upgraded fuzzy ID resolution to support structured selection using `ctx.elicit` when multiple matches are found, falling back to numbered lists via `ctx.sample`.
+- **Dynamic Server Instructions**: Implemented environment-aware server instructions using `mcp.instructions` to inform the LLM about active guardrails (Read-Only mode, etc.) and safety switches at startup.
+- **Middleware Integration**: Added FastMCP `LoggingMiddleware` and `ErrorHandlingMiddleware` to the server pipeline. This ensures:
+    - Comprehensive request/response logging for the MCP server.
+    - Consistent, structured error handling for all tools.
+- **Enhanced Logging**: Upgraded `HomeboxClient` to log all HTTP traffic (Method, URL, Status) and errors using standard Python `logging`.
+- **Test Coverage**: Added `tests/unit/test_middleware.py` to verify logging and error interception logic.
+
 ### Roadmap: Future Enhancements
 - **Streaming UI**: Explore sending base64-encoded image updates via `ctx.info` for real-time crop visualization.
 - **ZPL Label Service**: Add a dedicated resource for generating Brother/ZPL label streams.
