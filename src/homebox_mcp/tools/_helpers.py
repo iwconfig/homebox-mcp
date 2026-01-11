@@ -11,21 +11,8 @@ async def fuzzy_resolve_id(
 ) -> str:
     """
     Attempts to resolve an identifier (ID or Name) to a valid UUID.
-    If identifier is not a valid UUID (causes 404), it searches for a resource
+    If identifier is not a valid UUID (causes 404 or 400), it searches for a resource
     of resource_type with a similar name and uses sampling to confirm with the user.
-    
-    Args:
-        client: HomeboxClient instance.
-        resource_type: 'locations', 'labels', or 'items'.
-        identifier: The ID or Name to resolve.
-        ctx: MCP Context for sampling and logging.
-        target_name: Name of the item being created/updated (for prompt context).
-        
-    Returns:
-        The resolved UUID string.
-        
-    Raises:
-        httpx.HTTPStatusError: If resolution fails and no suggestion is accepted.
     """
     try:
         if resource_type == "locations":
@@ -36,12 +23,12 @@ async def fuzzy_resolve_id(
             await client.get_item(identifier)
         return identifier
     except httpx.HTTPStatusError as e:
-        if e.response.status_code == 404 and ctx:
+        if e.response.status_code in [400, 404] and ctx:
             suggestion = await _fuzzy_find(client, resource_type, identifier)
             if suggestion:
                 res_kind = resource_type.rstrip('s')
                 prompt = (
-                    f"I couldn't find a {res_kind} with ID '{identifier}', "
+                    f"I couldn't find a {res_kind} with identifier '{identifier}', "
                     f"but I found a similar {res_kind}: '{suggestion['name']}' ({suggestion['id']}).\n"
                     f"Should I use this {res_kind} instead"
                 )
