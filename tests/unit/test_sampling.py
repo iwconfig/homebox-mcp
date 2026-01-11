@@ -82,3 +82,88 @@ async def test_handle_create_item_location_suggestion_declined(mock_client, mock
     
     # create_item should NOT be called
     assert not mock_client.create_item.called
+
+@pytest.mark.asyncio
+async def test_handle_create_item_label_suggestion_accepted(mock_client, mock_ctx):
+    """Verify that handle_create_item uses suggested labels if accepted."""
+    # 1. Mock get_location to succeed (needed for the first resolve)
+    mock_client.get_location.return_value = {"id": "loc-1"}
+    
+    # 2. Mock get_label to fail with 404 for the name "Fragile"
+    resp = MagicMock(spec=httpx.Response)
+    resp.status_code = 404
+    error = httpx.HTTPStatusError("Not Found", request=MagicMock(), response=resp)
+    mock_client.get_label.side_effect = error
+    
+    # 3. Mock list_labels for fuzzy find
+    mock_client.list_labels.return_value = [
+        {"id": "label-uuid-fragile", "name": "Fragile Content"}
+    ]
+    
+    # 4. Mock ctx.sample to return YES
+    mock_ctx.sample.return_value = MagicMock(text="YES")
+    
+    # 5. Mock successful item creation
+    mock_client.create_item.return_value = {
+        "id": "itm-1",
+        "name": "Vase",
+        "location": {"id": "loc-1"},
+        "labels": [{"id": "label-uuid-fragile"}],
+    }
+    mock_client.update_item.return_value = {"id": "itm-1"}
+
+    # Call with label name instead of ID
+    await handle_create_item(
+        mock_client, 
+        name="Vase", 
+        location_id="loc-1",
+        label_ids=["Fragile"],
+        ctx=mock_ctx
+    )
+    
+    assert mock_ctx.sample.called
+    assert "Fragile Content" in mock_ctx.sample.call_args[1]["messages"][0]
+    
+    # Verify created with resolved label ID
+    create_payload = mock_client.create_item.call_args[0][0]
+    assert "label-uuid-fragile" in create_payload["labelIds"]
+
+@pytest.mark.asyncio
+async def test_handle_create_item_parent_suggestion_accepted(mock_client, mock_ctx):
+    """Verify that handle_create_item uses suggested parent item if accepted."""
+    mock_client.get_location.return_value = {"id": "loc-1"}
+    
+    # Mock get_item (parent) to fail with 404
+    resp = MagicMock(spec=httpx.Response)
+    resp.status_code = 404
+    error = httpx.HTTPStatusError("Not Found", request=MagicMock(), response=resp)
+    mock_client.get_item.side_effect = error
+    
+    # Mock list_items for fuzzy find
+    mock_client.list_items.return_value = {
+        "items": [{"id": "parent-uuid", "name": "Main Box"}]
+    }
+    
+    mock_ctx.sample.return_value = MagicMock(text="YES")
+    
+    mock_client.create_item.return_value = {
+        "id": "child-id",
+        "name": "Small Item",
+        "location": {"id": "loc-1"},
+        "parent": {"id": "parent-uuid"},
+    }
+    mock_client.update_item.return_value = {"id": "child-id"}
+
+    await handle_create_item(
+        mock_client, 
+        name="Small Item", 
+        location_id="loc-1",
+        parent_id="Main",
+        ctx=mock_ctx
+    )
+    
+    assert mock_ctx.sample.called
+    assert "Main Box" in mock_ctx.sample.call_args[1]["messages"][0]
+    
+    create_payload = mock_client.create_item.call_args[0][0]
+    assert create_payload["parentId"] == "parent-uuid"

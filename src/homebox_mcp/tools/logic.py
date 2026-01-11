@@ -1,0 +1,87 @@
+import httpx
+from fastmcp import Context
+from ..client import HomeboxClient
+
+async def fuzzy_resolve_id(
+    client: HomeboxClient,
+    resource_type: str,
+    identifier: str,
+    ctx: Context | None = None,
+    target_name: str | None = None,
+) -> str:
+    """
+    Attempts to resolve an identifier (ID or Name) to a valid UUID.
+    If identifier is not a valid UUID (causes 404), it searches for a resource
+    of resource_type with a similar name and uses sampling to confirm with the user.
+    
+    Args:
+        client: HomeboxClient instance.
+        resource_type: 'locations', 'labels', or 'items'.
+        identifier: The ID or Name to resolve.
+        ctx: MCP Context for sampling and logging.
+        target_name: Name of the item being created/updated (for prompt context).
+        
+    Returns:
+        The resolved UUID string.
+        
+    Raises:
+        httpx.HTTPStatusError: If resolution fails and no suggestion is accepted.
+    """
+    try:
+        if resource_type == "locations":
+            await client.get_location(identifier)
+        elif resource_type == "labels":
+            await client.get_label(identifier)
+        elif resource_type == "items":
+            await client.get_item(identifier)
+        return identifier
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404 and ctx:
+            suggestion = await _fuzzy_find(client, resource_type, identifier)
+            if suggestion:
+                res_kind = resource_type.rstrip('s')
+                prompt = (
+                    f"I couldn't find a {res_kind} with ID '{identifier}', "
+                    f"but I found a similar {res_kind}: '{suggestion['name']}' ({suggestion['id']}).\n"
+                    f"Should I use this {res_kind} instead"
+                )
+                if target_name:
+                    prompt += f" for '{target_name}'?"
+                else:
+                    prompt += "?"
+
+                sample_res = await ctx.sample(
+                    messages=[prompt],
+                    system_prompt=(
+                        f"You are an inventory assistant. The user provided an invalid {res_kind} identifier. "
+                        "Determine if the suggested resource is a reasonable substitute. "
+                        "Respond with 'YES' to use the suggestion, or 'NO' to fail the operation."
+                    ),
+                    max_tokens=10
+                )
+
+                if "YES" in sample_res.text.upper():
+                    await ctx.info(f"Using suggested {res_kind} '{suggestion['name']}' instead.")
+                    return suggestion["id"]
+        
+        raise e
+
+async def _fuzzy_find(client: HomeboxClient, resource_type: str, query: str) -> dict | None:
+    """Helper to find a resource by name (case-insensitive partial match)."""
+    try:
+        resources = []
+        if resource_type == "locations":
+            resources = await client.list_locations()
+        elif resource_type == "labels":
+            resources = await client.list_labels()
+        elif resource_type == "items":
+            res = await client.list_items(q=query)
+            resources = res.get("items", [])
+            
+        query = query.lower()
+        for res in resources:
+            if query in res["name"].lower():
+                return res
+    except Exception:
+        pass
+    return None

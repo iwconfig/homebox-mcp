@@ -1,9 +1,10 @@
 from typing import Annotated
 
-from fastmcp import FastMCP
+from fastmcp import FastMCP, Context
 
 from ..client import HomeboxClient
 from ..guardrails import protect_resource
+from .logic import fuzzy_resolve_id
 
 # --- Tool Handlers ---
 
@@ -15,14 +16,18 @@ async def handle_list_locations(client: HomeboxClient, filter_children: bool = F
 
 @protect_resource(resource_type="locations", action="create")
 async def handle_create_location(
-    client: HomeboxClient, name: str, description: str | None = None, parent_id: str | None = None
+    client: HomeboxClient,
+    name: str,
+    description: str | None = None,
+    parent_id: str | None = None,
+    ctx: Context | None = None,
 ) -> dict:
     """Create a new location."""
     payload = {"name": name}
     if description:
         payload["description"] = description
     if parent_id:
-        payload["parentId"] = parent_id
+        payload["parentId"] = await fuzzy_resolve_id(client, "locations", parent_id, ctx, name)
 
     return await client.create_location(payload)
 
@@ -44,6 +49,7 @@ async def handle_update_location(
     name: str | None = None,
     description: str | None = None,
     parent_id: str | None = None,
+    ctx: Context | None = None,
 ) -> dict:
     """Update an existing location."""
     existing = await client.get_location(id)
@@ -53,8 +59,10 @@ async def handle_update_location(
         payload["name"] = name
     if description:
         payload["description"] = description
+    
+    target_name = name or existing.get("name")
     if parent_id:
-        payload["parentId"] = parent_id
+        payload["parentId"] = await fuzzy_resolve_id(client, "locations", parent_id, ctx, target_name)
     elif "parent" in existing and existing["parent"]:
         payload["parentId"] = existing["parent"]["id"]
 
@@ -83,9 +91,10 @@ def register_locations_tools(mcp: FastMCP, client: HomeboxClient):
         name: Annotated[str, "Name of the location"],
         description: Annotated[str | None, "Description of the location"] = None,
         parent_id: Annotated[str | None, "ID of the parent location"] = None,
+        ctx: Context | None = None,
     ) -> dict:
         """Create Location"""
-        return await handle_create_location(client, name=name, description=description, parent_id=parent_id)
+        return await handle_create_location(client, name=name, description=description, parent_id=parent_id, ctx=ctx)
 
     @mcp.tool
     async def get_locations_tree(with_items: Annotated[bool, "Whether to include items in the tree"] = False) -> dict:
@@ -104,9 +113,12 @@ def register_locations_tools(mcp: FastMCP, client: HomeboxClient):
         name: Annotated[str | None, "New name of the location"] = None,
         description: Annotated[str | None, "New description of the location"] = None,
         parent_id: Annotated[str | None, "New parent ID of the location"] = None,
+        ctx: Context | None = None,
     ) -> dict:
         """Update Location"""
-        return await handle_update_location(client, id=id, name=name, description=description, parent_id=parent_id)
+        return await handle_update_location(
+            client, id=id, name=name, description=description, parent_id=parent_id, ctx=ctx
+        )
 
     @mcp.tool()
     async def delete_location(id: Annotated[str, "ID of the location"]) -> str:

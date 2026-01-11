@@ -11,6 +11,7 @@ from fastmcp.utilities.types import Image
 
 from ..client import HomeboxClient
 from ..guardrails import protect_resource
+from .logic import fuzzy_resolve_id
 
 # --- Tool Handlers ---
 
@@ -112,19 +113,6 @@ async def handle_get_item_link(client: HomeboxClient, query: str) -> str:
 
 
 @protect_resource(resource_type="items", action="create")
-async def _fuzzy_find_location(client: HomeboxClient, query: str) -> dict | None:
-    """Helper to find a location by name (case-insensitive partial match)."""
-    try:
-        locations = await client.list_locations()
-        query = query.lower()
-        for loc in locations:
-            if query in loc["name"].lower():
-                return loc
-    except Exception:
-        pass
-    return None
-
-
 async def handle_create_item(
     client: HomeboxClient,
     name: str,
@@ -144,53 +132,28 @@ async def handle_create_item(
     if ctx:
         await ctx.info(f"Creating item '{name}'...")
 
-    # Verification and Sampling for missing location
-    current_location_id = location_id
-    try:
-        await client.get_location(current_location_id)
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code == 404 and ctx:
-            # Location not found by ID, let's try to be helpful if it looks like a name
-            # or if we can find something similar.
-            suggestion = await _fuzzy_find_location(client, location_id)
-            if suggestion:
-                # Use sampling to ask the user/agent if they want to use the suggested location
-                prompt = (
-                    f"I couldn't find a location with ID '{location_id}', "
-                    f"but I found a similar location: '{suggestion['name']}' ({suggestion['id']}).\n"
-                    f"Should I use this location instead for the new item '{name}'?"
-                )
-                
-                # Request a boolean/structured response
-                sample_res = await ctx.sample(
-                    messages=[prompt],
-                    system_prompt=(
-                        "You are an inventory assistant. The user provided an invalid location ID. "
-                        "Determine if the suggested location is a reasonable substitute. "
-                        "Respond with 'YES' to use the suggestion, or 'NO' to fail the operation."
-                    ),
-                    max_tokens=10
-                )
-                
-                if "YES" in sample_res.text.upper():
-                    await ctx.info(f"Using suggested location '{suggestion['name']}' instead.")
-                    current_location_id = suggestion["id"]
-                else:
-                    raise e # Re-raise original 404
-            else:
-                raise e
-        else:
-            raise e
+    # 1. Resolve IDs (Fuzzy Match + Sampling if needed)
+    resolved_location_id = await fuzzy_resolve_id(client, "locations", location_id, ctx, name)
+    
+    resolved_parent_id = None
+    if parent_id:
+        resolved_parent_id = await fuzzy_resolve_id(client, "items", parent_id, ctx, name)
+
+    resolved_label_ids = []
+    if label_ids:
+        for lbl_id in label_ids:
+            res_lbl = await fuzzy_resolve_id(client, "labels", lbl_id, ctx, name)
+            resolved_label_ids.append(res_lbl)
 
     create_payload = {
         "name": name,
         "quantity": int(quantity),
         "description": description or "",
-        "labelIds": label_ids or [],
-        "locationId": current_location_id,
+        "labelIds": resolved_label_ids,
+        "locationId": resolved_location_id,
     }
-    if parent_id:
-        create_payload["parentId"] = parent_id
+    if resolved_parent_id:
+        create_payload["parentId"] = resolved_parent_id
 
     # Phase 1: Create basic item
     created_item = await client.create_item(create_payload)
@@ -206,18 +169,18 @@ async def handle_create_item(
         # Flatten object references
         if loc := created_item.get("location"):
             update_payload["locationId"] = loc["id"]
-        elif current_location_id:
-            update_payload["locationId"] = current_location_id
+        elif resolved_location_id:
+            update_payload["locationId"] = resolved_location_id
 
         if parent := created_item.get("parent"):
             update_payload["parentId"] = parent["id"]
-        elif parent_id:
-            update_payload["parentId"] = parent_id
+        elif resolved_parent_id:
+            update_payload["parentId"] = resolved_parent_id
 
         if labels := created_item.get("labels"):
             update_payload["labelIds"] = [label["id"] for label in labels]
-        elif label_ids:
-            update_payload["labelIds"] = label_ids
+        elif resolved_label_ids:
+            update_payload["labelIds"] = resolved_label_ids
 
         if notes is not None:
             update_payload["notes"] = notes
@@ -287,21 +250,29 @@ async def handle_update_item(
     if labels := existing.get("labels"):
         update_payload["labelIds"] = [label["id"] for label in labels]
 
-    # Apply updates
-    if name is not None:
+    # Apply basic updates
+    if name:
         update_payload["name"] = name
-    if description is not None:
+    if description:
         update_payload["description"] = description
-    if notes is not None:
-        update_payload["notes"] = notes
     if quantity is not None:
         update_payload["quantity"] = int(quantity)
-    if location_id is not None:
-        update_payload["locationId"] = location_id
-    if parent_id is not None:
-        update_payload["parentId"] = parent_id
+
+    # 1. Resolve IDs (Fuzzy Match + Sampling if needed)
+    target_name = name or existing.get("name")
+    
+    if location_id:
+        update_payload["locationId"] = await fuzzy_resolve_id(client, "locations", location_id, ctx, target_name)
+    
+    if parent_id:
+        update_payload["parentId"] = await fuzzy_resolve_id(client, "items", parent_id, ctx, target_name)
+
     if label_ids is not None:
-        update_payload["labelIds"] = label_ids
+        resolved_label_ids = []
+        for lbl_id in label_ids:
+            res_lbl = await fuzzy_resolve_id(client, "labels", lbl_id, ctx, target_name)
+            resolved_label_ids.append(res_lbl)
+        update_payload["labelIds"] = resolved_label_ids
     if serial_number is not None:
         update_payload["serialNumber"] = serial_number
     if model_number is not None:
@@ -336,15 +307,22 @@ async def handle_patch_item(
     location_id: str | None = None,
     quantity: int | None = None,
     label_ids: list[str] | None = None,
+    ctx: Context | None = None,
 ) -> dict:
-    """Partial update for items via the PATCH endpoint."""
+    """Update item with PATCH (partial update). Only supports moving, quantity change, and labels."""
     payload = {}
-    if location_id:
-        payload["locationId"] = location_id
     if quantity is not None:
-        payload["quantity"] = quantity
-    if label_ids:
-        payload["labelIds"] = label_ids
+        payload["quantity"] = int(quantity)
+    
+    if location_id:
+        payload["locationId"] = await fuzzy_resolve_id(client, "locations", location_id, ctx)
+        
+    if label_ids is not None:
+        resolved_label_ids = []
+        for lbl_id in label_ids:
+            res_lbl = await fuzzy_resolve_id(client, "labels", lbl_id, ctx)
+            resolved_label_ids.append(res_lbl)
+        payload["labelIds"] = resolved_label_ids
 
     return await client.patch_item(id, payload)
 
@@ -645,9 +623,12 @@ def register_items_tools(mcp: FastMCP, client: HomeboxClient):
         location_id: Annotated[str | None, "ID of the destination location"] = None,
         quantity: Annotated[int | None, "New quantity"] = None,
         label_ids: Annotated[list[str] | None, "New list of label UUIDs"] = None,
+        ctx: Context | None = None,
     ) -> dict:
         """Update item with PATCH (partial update). Only supports moving, quantity change, and labels."""
-        return await handle_patch_item(client, id=id, location_id=location_id, quantity=quantity, label_ids=label_ids)
+        return await handle_patch_item(
+            client, id=id, location_id=location_id, quantity=quantity, label_ids=label_ids, ctx=ctx
+        )
 
     @mcp.tool()
     async def delete_item(id: Annotated[str, "ID of the item"]) -> str:

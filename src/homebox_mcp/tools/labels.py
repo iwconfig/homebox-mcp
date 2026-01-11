@@ -1,9 +1,10 @@
 from typing import Annotated
 
-from fastmcp import FastMCP
+from fastmcp import FastMCP, Context
 
 from ..client import HomeboxClient
 from ..guardrails import protect_resource
+from .logic import fuzzy_resolve_id
 
 # --- Tool Handlers ---
 
@@ -34,10 +35,16 @@ async def handle_get_label(client: HomeboxClient, id: str) -> dict:
 
 @protect_resource(resource_type="labels", action="update")
 async def handle_update_label(
-    client: HomeboxClient, id: str, name: str | None = None, description: str | None = None, color: str | None = None
+    client: HomeboxClient,
+    id: str,
+    name: str | None = None,
+    description: str | None = None,
+    color: str | None = None,
+    ctx: Context | None = None,
 ) -> dict:
     """Update an existing label."""
-    existing = await client.get_label(id)
+    resolved_id = await fuzzy_resolve_id(client, "labels", id, ctx)
+    existing = await client.get_label(resolved_id)
     payload = existing.copy()
 
     if name:
@@ -47,7 +54,7 @@ async def handle_update_label(
     if color:
         payload["color"] = color
 
-    return await client.update_label(id, payload)
+    return await client.update_label(resolved_id, payload)
 
 
 @protect_resource(resource_type="labels", action="delete")
@@ -87,9 +94,12 @@ def register_labels_tools(mcp: FastMCP, client: HomeboxClient):
         name: Annotated[str | None, "New name of the label"] = None,
         description: Annotated[str | None, "New description of the label"] = None,
         color: Annotated[str | None, "New color of the label (hex code)"] = None,
+        ctx: Context | None = None,
     ) -> dict:
         """Update Label"""
-        return await handle_update_label(client, id=id, name=name, description=description, color=color)
+        return await handle_update_label(
+            client, id=id, name=name, description=description, color=color, ctx=ctx
+        )
 
     @mcp.tool()
     async def delete_label(id: Annotated[str, "ID of the label"]) -> str:

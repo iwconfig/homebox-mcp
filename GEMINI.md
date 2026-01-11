@@ -105,12 +105,15 @@ The guardrails follow a three-tier lockdown strategy to balance flexibility and 
     - Resolved "Output validation error" issues by removing strict `output_schema` and using flexible return hints (`dict | str`).
 - **MCP Resources (`homebox://`)**:
     - Implemented a full suite of resources for Items, Locations, Labels, Maintenance, and System Status.
-    - Enabled direct, read-only data access following the MCP URI scheme.
+    - Simplified function names (removed redundant `_resource` suffix).
 - **Context & Progress**:
-    - Integrated `ctx.report_progress` into long-running operations: `wipe_inventory`, `import_items`, and multi-step image processing (`finalize_processed_item`).
+    - Integrated `ctx.report_progress` into long-running operations: `wipe_inventory`, `import_items`, and multi-step image processing.
     - Enhanced user experience by providing real-time feedback during bulk tasks.
-- **Sampling & Human-in-the-loop**:
-    - Implemented `audit_inventory` tool which uses `ctx.sample` to resolve discrepancies interactively with the user.
+- **Sampling & Universal Fuzzy ID Resolution**:
+    - Implemented `fuzzy_resolve_id` logic across all creation/update tools.
+    - If a user provides a Name instead of a UUID (or an invalid UUID), the server searches for similar resources and uses `ctx.sample` to ask the agent/user for confirmation.
+    - Applies to **Locations**, **Labels**, and **Parent Items**.
+    - Centralized this logic in `src/homebox_mcp/tools/logic.py`.
 - **Prompt Engineering (CO-STAR)**:
     - Enhanced `analyze-item` prompt and added `audit-inventory` prompt following the CO-STAR framework (Context, Objective, Style, Tone, Audience, Rules) with Few-Shot examples.
 - **Vision Integration**: Implemented robust vision tools (inbox splitting, image analysis) with specialized rollback logic to prevent orphaned data on failure.
@@ -119,7 +122,6 @@ The guardrails follow a three-tier lockdown strategy to balance flexibility and 
     - Verified compatibility with **Python 3.13**.
 
 ### Roadmap: Future Enhancements
-- **Sampling Depth**: Implement multi-turn discrepancy resolution using nested `sample_step` calls.
 - **Streaming UI**: Explore sending base64-encoded image updates via `ctx.info` for real-time crop visualization.
 - **ZPL Label Service**: Add a dedicated resource for generating Brother/ZPL label streams.
 
