@@ -85,3 +85,40 @@ async def _fuzzy_find(client: HomeboxClient, resource_type: str, query: str) -> 
     except Exception:
         pass
     return None
+
+def ensure_required_fields(payload: dict) -> dict:
+    """
+    Ensures that mandatory date and string fields are present in the payload
+    to satisfy Homebox's strict JSON unmarshaling.
+    """
+    updated = payload.copy()
+    
+    # Mandatory string fields
+    for key in ["purchaseFrom", "soldTo", "soldNotes", "warrantyDetails"]:
+        if key not in updated:
+            updated[key] = ""
+            
+    # Mandatory date fields (Go zero-time)
+    for key in ["purchaseTime", "soldTime", "warrantyExpires"]:
+        if not updated.get(key):
+            updated[key] = "0001-01-01T00:00:00Z"
+            
+    return updated
+
+def flatten_object_refs(item: dict) -> dict:
+    """
+    Converts nested object references (from GET responses) into flat ID fields
+    suitable for PUT/POST payloads.
+    """
+    flattened = item.copy()
+    
+    if loc := item.get("location"):
+        flattened["locationId"] = loc["id"]
+        
+    if parent := item.get("parent"):
+        flattened["parentId"] = parent["id"]
+        
+    if labels := item.get("labels"):
+        flattened["labelIds"] = [label["id"] for label in labels]
+        
+    return flattened

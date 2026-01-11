@@ -11,7 +11,7 @@ from fastmcp.utilities.types import Image
 
 from ..client import HomeboxClient
 from ..guardrails import protect_resource
-from .logic import fuzzy_resolve_id
+from ._helpers import ensure_required_fields, flatten_object_refs, fuzzy_resolve_id
 
 # --- Tool Handlers ---
 
@@ -164,22 +164,14 @@ async def handle_create_item(
 
     try:
         # Phase 2: Enrich metadata via PUT
-        update_payload = created_item.copy()
+        update_payload = flatten_object_refs(created_item)
 
-        # Flatten object references
-        if loc := created_item.get("location"):
-            update_payload["locationId"] = loc["id"]
-        elif resolved_location_id:
+        # Apply provided overrides if they weren't in the create response
+        if resolved_location_id:
             update_payload["locationId"] = resolved_location_id
-
-        if parent := created_item.get("parent"):
-            update_payload["parentId"] = parent["id"]
-        elif resolved_parent_id:
+        if resolved_parent_id:
             update_payload["parentId"] = resolved_parent_id
-
-        if labels := created_item.get("labels"):
-            update_payload["labelIds"] = [label["id"] for label in labels]
-        elif resolved_label_ids:
+        if resolved_label_ids:
             update_payload["labelIds"] = resolved_label_ids
 
         if notes is not None:
@@ -194,12 +186,7 @@ async def handle_create_item(
             update_payload["purchasePrice"] = str(purchase_price)
 
         # Initialize required date/string fields if missing
-        for key in ["purchaseFrom", "soldTo", "soldNotes", "warrantyDetails"]:
-            if key not in update_payload:
-                update_payload[key] = ""
-        for key in ["purchaseTime", "soldTime", "warrantyExpires"]:
-            if key not in update_payload:
-                update_payload[key] = "0001-01-01T00:00:00Z"
+        update_payload = ensure_required_fields(update_payload)
 
         final_item = await client.update_item(item_id, update_payload)
 
@@ -240,15 +227,7 @@ async def handle_update_item(
         await ctx.info(f"Updating item {id}...")
 
     existing = await client.get_item(id)
-    update_payload = existing.copy()
-
-    # Flatten object references
-    if loc := existing.get("location"):
-        update_payload["locationId"] = loc["id"]
-    if parent := existing.get("parent"):
-        update_payload["parentId"] = parent["id"]
-    if labels := existing.get("labels"):
-        update_payload["labelIds"] = [label["id"] for label in labels]
+    update_payload = flatten_object_refs(existing)
 
     # Apply basic updates
     if name:
@@ -257,6 +236,8 @@ async def handle_update_item(
         update_payload["description"] = description
     if quantity is not None:
         update_payload["quantity"] = int(quantity)
+    if notes is not None:
+        update_payload["notes"] = notes
 
     # 1. Resolve IDs (Fuzzy Match + Sampling if needed)
     target_name = name or existing.get("name")
@@ -273,6 +254,7 @@ async def handle_update_item(
             res_lbl = await fuzzy_resolve_id(client, "labels", lbl_id, ctx, target_name)
             resolved_label_ids.append(res_lbl)
         update_payload["labelIds"] = resolved_label_ids
+
     if serial_number is not None:
         update_payload["serialNumber"] = serial_number
     if model_number is not None:
@@ -284,13 +266,8 @@ async def handle_update_item(
     if fields is not None:
         update_payload["fields"] = fields
 
-    # Preserve existing dates or use zero-dates
-    for key in ["purchaseFrom", "soldTo", "soldNotes", "warrantyDetails"]:
-        if key not in update_payload:
-            update_payload[key] = existing.get(key, "")
-    for key in ["purchaseTime", "soldTime", "warrantyExpires"]:
-        if key not in update_payload:
-            update_payload[key] = existing.get(key, "0001-01-01T00:00:00Z")
+    # Ensure required fields
+    update_payload = ensure_required_fields(update_payload)
 
     data = await client.update_item(id, update_payload)
 
@@ -298,6 +275,8 @@ async def handle_update_item(
         await ctx.info(f"Item {id} updated successfully.")
 
     return data
+
+    
 
 
 @protect_resource(resource_type="items", action="update")

@@ -113,12 +113,14 @@ The guardrails follow a three-tier lockdown strategy to balance flexibility and 
     - Implemented `fuzzy_resolve_id` logic across all creation/update tools.
     - If a user provides a Name instead of a UUID (or an invalid UUID), the server searches for similar resources and uses `ctx.sample` to ask the agent/user for confirmation.
     - Applies to **Locations**, **Labels**, and **Parent Items**.
-    - Centralized this logic in `src/homebox_mcp/tools/logic.py`.
+- **Internal Logic Consolidation**:
+    - Created `src/homebox_mcp/tools/_helpers.py` to house shared internal logic.
+    - Consolidated **Zero-Date Initialization** (`ensure_required_fields`) and **Object Reference Flattening** (`flatten_object_refs`) to eliminate code duplication in `items.py` and `images.py`.
 - **Prompt Engineering (CO-STAR)**:
     - Enhanced `analyze-item` prompt and added `audit-inventory` prompt following the CO-STAR framework (Context, Objective, Style, Tone, Audience, Rules) with Few-Shot examples.
 - **Vision Integration**: Implemented robust vision tools (inbox splitting, image analysis) with specialized rollback logic to prevent orphaned data on failure.
 - **Test Suite Completion**:
-    - Achieved **100% Pass Rate** across 91 unit and integration tests.
+    - Achieved **100% Pass Rate** across 95 unit and integration tests.
     - Verified compatibility with **Python 3.13**.
 
 ### Roadmap: Future Enhancements

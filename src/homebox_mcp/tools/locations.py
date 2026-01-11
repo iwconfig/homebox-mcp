@@ -4,7 +4,7 @@ from fastmcp import FastMCP, Context
 
 from ..client import HomeboxClient
 from ..guardrails import protect_resource
-from .logic import fuzzy_resolve_id
+from ._helpers import fuzzy_resolve_id
 
 # --- Tool Handlers ---
 

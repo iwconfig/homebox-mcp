@@ -9,6 +9,7 @@ from fastmcp.utilities.types import Image
 from PIL import Image as PILImage
 
 from ..client import HomeboxClient
+from ._helpers import ensure_required_fields, flatten_object_refs
 
 # Inbox directory for local files
 INBOX_DIR = os.getenv("HOMEBOX_INBOX_DIR", "inbox")
@@ -154,12 +155,7 @@ async def handle_finalize_processed_item(
             # 3. Final enrichment
             if ctx:
                 await ctx.report_progress(90, 100, "Applying final metadata...")
-            update_payload = item.copy()
-            # Flatten location and labels for the PUT payload
-            if "location" in item and item["location"]:
-                update_payload["locationId"] = item["location"]["id"]
-            if "labels" in item and item["labels"]:
-                update_payload["labelIds"] = [label["id"] for label in item["labels"]]
+            update_payload = flatten_object_refs(item)
 
             update_payload.update(
                 {
@@ -171,12 +167,7 @@ async def handle_finalize_processed_item(
             )
 
             # Ensure mandatory date and string fields are present
-            for key in ["purchaseFrom", "soldTo", "soldNotes", "warrantyDetails"]:
-                if key not in update_payload:
-                    update_payload[key] = ""
-            for key in ["purchaseTime", "soldTime", "warrantyExpires"]:
-                if not update_payload.get(key):
-                    update_payload[key] = "0001-01-01T00:00:00Z"
+            update_payload = ensure_required_fields(update_payload)
 
             await client.update_item(new_id, update_payload)
 
@@ -347,12 +338,7 @@ async def handle_split_item_from_image(
             await client.upload_item_attachment(new_id, files=files, data=attach_data)
 
             # 3. Final enrichment
-            update_payload = new_item.copy()
-            # Flatten location and labels
-            if "location" in new_item and new_item["location"]:
-                update_payload["locationId"] = new_item["location"]["id"]
-            if "labels" in new_item and new_item["labels"]:
-                update_payload["labelIds"] = [label["id"] for label in new_item["labels"]]
+            update_payload = flatten_object_refs(new_item)
 
             update_payload.update(
                 {
@@ -361,12 +347,7 @@ async def handle_split_item_from_image(
             )
 
             # Ensure mandatory date and string fields are present
-            for key in ["purchaseFrom", "soldTo", "soldNotes", "warrantyDetails"]:
-                if key not in update_payload:
-                    update_payload[key] = ""
-            for key in ["purchaseTime", "soldTime", "warrantyExpires"]:
-                if not update_payload.get(key):
-                    update_payload[key] = "0001-01-01T00:00:00Z"
+            update_payload = ensure_required_fields(update_payload)
 
             await client.update_item(new_id, update_payload)
             results.append(new_id)
