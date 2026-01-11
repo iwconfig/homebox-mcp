@@ -39,11 +39,7 @@ async def server_session():
     if not env.get("HOMEBOX_API_KEY") and not env.get("HOMEBOX_USERNAME"):
         pytest.skip("No Homebox credentials found in environment")
 
-    transport = StdioTransport(
-        command=".venv/bin/python",
-        args=["-m", "homebox_mcp.server"],
-        env=env
-    )
+    transport = StdioTransport(command=".venv/bin/python", args=["-m", "homebox_mcp.server"], env=env)
     async with Client(transport=transport) as client:
         yield client
 

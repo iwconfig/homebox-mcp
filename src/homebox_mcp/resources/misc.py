@@ -34,7 +34,7 @@ def register_misc_resources(mcp: FastMCP, client: HomeboxClient):
         """
         bom = await client.export_bom()
         # BOM might be CSV or JSON? Client returns whatever the API returns.
-        # Check client implementation. 
+        # Check client implementation.
         # export_bom -> "GET", "reporting/bill-of-materials"
         # API returns CSV text usually.
         # Resource content should be string.

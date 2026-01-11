@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastmcp import FastMCP, Context
+from fastmcp import Context, FastMCP
 
 from ..client import HomeboxClient
 from ..guardrails import protect_resource
@@ -97,9 +97,7 @@ def register_labels_tools(mcp: FastMCP, client: HomeboxClient):
         ctx: Context | None = None,
     ) -> dict:
         """Update Label"""
-        return await handle_update_label(
-            client, id=id, name=name, description=description, color=color, ctx=ctx
-        )
+        return await handle_update_label(client, id=id, name=name, description=description, color=color, ctx=ctx)
 
     @mcp.tool()
     async def delete_label(id: Annotated[str, "ID of the label"]) -> str:

@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastmcp import FastMCP, Context
+from fastmcp import Context, FastMCP
 
 from ..client import HomeboxClient
 from ..guardrails import protect_resource
@@ -95,16 +95,21 @@ async def handle_audit_inventory(client: HomeboxClient, ctx: Context) -> str:
 
     resolutions = []
     for i, disc in enumerate(discrepancies):
-        await ctx.report_progress(50 + (i / len(discrepancies) * 40), 100, f"Resolving {i+1}/{len(discrepancies)}...")
+        await ctx.report_progress(50 + (i / len(discrepancies) * 40), 100, f"Resolving {i + 1}/{len(discrepancies)}...")
 
         # Use sampling to ask the user (via LLM) how to resolve
-        prompt = f"Audit Discrepancy Found:\nItem: {disc['name']} ({disc['item_id']})\nIssue: {disc['issue']}\n\nHow should we resolve this? (e.g., 'Update quantity to 1', 'Move to Electronics', 'Ignore')"
+        prompt = (
+            f"Audit Discrepancy Found:\nItem: {disc['name']} ({disc['item_id']})\n"
+            f"Issue: {disc['issue']}\n\n"
+            "How should we resolve this? (e.g., 'Update quantity to 1', "
+            "'Move to Electronics', 'Ignore')"
+        )
 
         # We request a structured response from the sampling call
         sample_res = await ctx.sample(
             messages=[prompt],
             system_prompt="You are an inventory auditor. Provide a concise resolution for the reported issue.",
-            max_tokens=100
+            max_tokens=100,
         )
 
         resolution = sample_res.text

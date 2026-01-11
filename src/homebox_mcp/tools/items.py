@@ -134,7 +134,7 @@ async def handle_create_item(
 
     # 1. Resolve IDs (Fuzzy Match + Sampling if needed)
     resolved_location_id = await fuzzy_resolve_id(client, "locations", location_id, ctx, name)
-    
+
     resolved_parent_id = None
     if parent_id:
         resolved_parent_id = await fuzzy_resolve_id(client, "items", parent_id, ctx, name)
@@ -241,10 +241,10 @@ async def handle_update_item(
 
     # 1. Resolve IDs (Fuzzy Match + Sampling if needed)
     target_name = name or existing.get("name")
-    
+
     if location_id:
         update_payload["locationId"] = await fuzzy_resolve_id(client, "locations", location_id, ctx, target_name)
-    
+
     if parent_id:
         update_payload["parentId"] = await fuzzy_resolve_id(client, "items", parent_id, ctx, target_name)
 
@@ -276,8 +276,6 @@ async def handle_update_item(
 
     return data
 
-    
-
 
 @protect_resource(resource_type="items", action="update")
 async def handle_patch_item(
@@ -292,10 +290,10 @@ async def handle_patch_item(
     payload = {}
     if quantity is not None:
         payload["quantity"] = int(quantity)
-    
+
     if location_id:
         payload["locationId"] = await fuzzy_resolve_id(client, "locations", location_id, ctx)
-        
+
     if label_ids is not None:
         resolved_label_ids = []
         for lbl_id in label_ids:

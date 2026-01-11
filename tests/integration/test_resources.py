@@ -1,5 +1,7 @@
 import json
+
 import pytest
+
 
 @pytest.mark.anyio
 async def test_resources_lifecycle(server_session):
@@ -14,7 +16,7 @@ async def test_resources_lifecycle(server_session):
     item_res = await server_session.call_tool("create_item", {"name": item_name, "location_id": loc_id})
     item_data = json.loads(item_res.content[0].text)
     item_id = item_data["id"]
-    
+
     # Re-fetch item to ensure we have the asset ID (sometimes not in create response)
     get_res = await server_session.call_tool("get_item", {"id": item_id})
     full_item_data = json.loads(get_res.content[0].text)
@@ -42,7 +44,7 @@ async def test_resources_lifecycle(server_session):
             res = await server_session.read_resource(f"homebox://assets/{asset_id}")
             data = json.loads(res[0].text)
             assert data["id"] == item_id
-            
+
         # 6. Test homebox://status
         res = await server_session.read_resource("homebox://status")
         data = json.loads(res[0].text)
@@ -52,7 +54,7 @@ async def test_resources_lifecycle(server_session):
         res = await server_session.read_resource("homebox://locations/tree")
         data = json.loads(res[0].text)
         assert isinstance(data, list)
-        
+
         # 8. Test homebox://maintenance
         res = await server_session.read_resource("homebox://maintenance")
         data = json.loads(res[0].text)
@@ -62,11 +64,11 @@ async def test_resources_lifecycle(server_session):
         res = await server_session.read_resource("homebox://labels")
         data = json.loads(res[0].text)
         assert isinstance(data, list)
-        
+
         # 10. Test homebox://users/self
         res = await server_session.read_resource("homebox://users/self")
         data = json.loads(res[0].text)
-        assert "email" in data["item"] # User response is wrapped
+        assert "email" in data["item"]  # User response is wrapped
 
     finally:
         # Clean up

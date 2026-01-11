@@ -1,76 +1,64 @@
 from unittest.mock import AsyncMock, MagicMock, patch
-import uuid
+
 import pytest
-import httpx
 from fastmcp.utilities.types import Image
 
-from homebox_mcp.tools.actions import handle_wipe_inventory, handle_create_missing_thumbnails, handle_ensure_asset_ids
+from homebox_mcp.tools.actions import handle_create_missing_thumbnails, handle_ensure_asset_ids, handle_wipe_inventory
 from homebox_mcp.tools.groups import (
-    handle_create_group_invitation,
-    handle_export_bom,
     handle_get_group,
     handle_update_group,
-    handle_get_label_statistics,
-    handle_get_location_statistics,
-    handle_get_purchase_price_statistics,
 )
 from homebox_mcp.tools.items import (
     handle_create_item,
+    handle_delete_item,
+    handle_delete_item_attachment,
+    handle_export_items,
     handle_get_item,
+    handle_get_item_by_asset_id,
     handle_get_item_field_values,
+    handle_get_item_image,
     handle_get_item_link,
     handle_import_items,
     handle_list_items,
     handle_patch_item,
     handle_update_item_attachment,
     handle_upload_item_attachment,
-    handle_delete_item,
-    handle_get_item_by_asset_id,
-    handle_export_items,
-    handle_get_item_fields,
-    handle_duplicate_item,
-    handle_get_item_path,
-    handle_get_item_attachment_token,
-    handle_delete_item_attachment,
-    handle_get_item_maintenance,
-    handle_create_item_maintenance,
-    handle_get_item_image,
 )
 from homebox_mcp.tools.labels import (
     handle_create_label,
-    handle_get_label,
-    handle_list_labels,
     handle_delete_label,
+    handle_list_labels,
 )
 from homebox_mcp.tools.locations import (
-    handle_create_location,
-    handle_get_location,
+    handle_delete_location,
     handle_get_locations_tree,
     handle_list_locations,
     handle_update_location,
-    handle_delete_location,
 )
 from homebox_mcp.tools.maintenance import (
-    handle_query_all_maintenance, 
-    handle_update_maintenance_entry,
     handle_delete_maintenance_entry,
+    handle_query_all_maintenance,
+    handle_update_maintenance_entry,
 )
 from homebox_mcp.tools.misc import (
     handle_create_qrcode,
     handle_get_label_image,
     handle_get_status,
-    handle_list_currencies,
     handle_search_product_by_barcode,
 )
-from homebox_mcp.tools.notifiers import handle_update_notifier, handle_list_notifiers, handle_create_notifier, handle_test_notifier, handle_delete_notifier
+from homebox_mcp.tools.notifiers import (
+    handle_update_notifier,
+)
 from homebox_mcp.tools.templates import (
     handle_create_item_from_template,
     handle_create_template,
-    handle_get_template,
-    handle_list_templates,
     handle_delete_template,
+    handle_list_templates,
 )
-from homebox_mcp.tools.users import handle_change_password, handle_delete_user_self, handle_get_user_self, handle_update_user_self, handle_register_user, handle_login_user, handle_logout_user
+from homebox_mcp.tools.users import (
+    handle_change_password,
+    handle_delete_user_self,
+)
 
 
 @pytest.fixture
@@ -100,10 +88,10 @@ async def test_wipe_inventory_success_flow(mock_client, monkeypatch):
     """Verify that wipe_inventory calls the API correctly when allowed."""
     monkeypatch.setenv("HOMEBOX_ALLOW_WIPE_INVENTORY", "true")
     monkeypatch.setenv("HOMEBOX_PROTECTED_USERS", "")
-    
+
     mock_client.get_user_self.return_value = {"item": {"email": "safe@ex.com", "id": "safe-id"}}
     mock_client.wipe_inventory.return_value = {"completed": 10}
-    
+
     res = await handle_wipe_inventory(mock_client, wipe_labels=True)
     assert "Wipe inventory" in res
     assert mock_client.wipe_inventory.call_count == 1
@@ -198,7 +186,7 @@ async def test_change_password_404_resilience(mock_client):
     """Verify graceful handling if the Homebox version doesn't support the endpoint."""
     mock_client.get_user_self.return_value = {"item": {"email": "safe@ex.com"}}
     mock_client.change_password.side_effect = Exception("Client error '404 Not Found'")
-    
+
     res = await handle_change_password(mock_client, "old", "new")
     assert "might not be supported in this Homebox version" in res
 
@@ -219,7 +207,7 @@ async def test_update_location_parent_mapping(mock_client):
     """Verify that update_location correctly maps 'parent' object back to 'parentId'."""
     mock_client.get_location.return_value = {"id": "loc-1", "name": "Child", "parent": {"id": "p-123"}}
     mock_client.update_location.return_value = {"id": "loc-1", "name": "Updated"}
-    
+
     await handle_update_location(mock_client, id="loc-1", name="Updated")
     args, kwargs = mock_client.update_location.call_args
     assert args[1]["parentId"] == "p-123"
@@ -240,9 +228,9 @@ async def test_update_item_attachment_merging(mock_client):
     """Verify that attachment update fetches existing data first."""
     mock_client.get_item.return_value = {"attachments": [{"id": "att-1", "title": "Old", "type": "manual"}]}
     mock_client.update_item_attachment.return_value = {"id": "att-1", "title": "New", "type": "manual"}
-    
+
     await handle_update_item_attachment(mock_client, id="itm-1", attachment_id="att-1", title="New")
-    
+
     args, kwargs = mock_client.update_item_attachment.call_args
     assert args[2]["title"] == "New"
     assert args[2]["type"] == "manual"  # Preserved
@@ -424,10 +412,10 @@ async def test_delete_handlers_success(mock_client):
     """Verify all delete handlers call the client correctly."""
     assert "Deleted" in await handle_delete_item(mock_client, "1")
     mock_client.delete_item.assert_called_with("1")
-    
+
     assert "Deleted" in await handle_delete_location(mock_client, "1")
     mock_client.delete_location.assert_called_with("1")
-    
+
     assert "Deleted" in await handle_delete_label(mock_client, "1")
     mock_client.delete_label.assert_called_with("1")
 
@@ -512,24 +500,25 @@ async def test_upload_attachment_from_url_no_extension(mock_client):
         # Should have appended .png based on image/png
         assert filename == "random-id.png"
 
+
 @pytest.mark.asyncio
 async def test_handle_get_item_image(mock_client):
     """Test retrieving item image."""
     item_id = "item-1"
-    
+
     # Mock get_item response with attachments
     mock_client.request.side_effect = [
-        {"id": item_id, "attachments": [{"id": "att-1", "primary": True}]}, # get item
-        b"\x89PNG\r\n\x1a\n" # get attachment data (bytes)
+        {"id": item_id, "attachments": [{"id": "att-1", "primary": True}]},  # get item
+        b"\x89PNG\r\n\x1a\n",  # get attachment data (bytes)
     ]
-    
+
     result = await handle_get_item_image(mock_client, item_id)
-    
+
     assert isinstance(result, Image)
     assert result.data == b"\x89PNG\r\n\x1a\n"
     # FastMCP Image calculates mime_type from format or path
     assert result._mime_type == "image/png"
-    
+
     # Verify calls
     assert mock_client.request.call_count == 2
     assert mock_client.request.call_args_list[0][0][1] == f"items/{item_id}"

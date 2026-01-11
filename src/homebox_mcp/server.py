@@ -48,9 +48,14 @@ def _get_dynamic_instructions() -> str:
     readonly = os.getenv("HOMEBOX_READONLY_RESOURCES", "")
     if readonly:
         if "all" in readonly.lower():
-            instructions.append("IMPORTANT: The entire inventory is in READ-ONLY mode. Do not attempt to create, update, or delete resources.")
+            instructions.append(
+                "IMPORTANT: The entire inventory is in READ-ONLY mode. "
+                "Do not attempt to create, update, or delete resources."
+            )
         else:
-            instructions.append(f"IMPORTANT: The following resources are READ-ONLY: {readonly}. Do not attempt to modify them.")
+            instructions.append(
+                f"IMPORTANT: The following resources are READ-ONLY: {readonly}. Do not attempt to modify them."
+            )
 
     non_deletable = os.getenv("HOMEBOX_NON_DELETABLE_RESOURCES", "")
     if non_deletable:

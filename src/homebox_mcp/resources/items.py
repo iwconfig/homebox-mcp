@@ -67,12 +67,12 @@ def register_item_resources(mcp: FastMCP, client: HomeboxClient):
         # The backend handles the normalization (stripping hyphens and parsing as int)
         # but the client method might need to know it's getting a pagination result.
         result = await client.get_item_by_asset_id(asset_id)
-        
+
         # If result is a list (pagination result), try to get the first item
         if isinstance(result, dict) and "items" in result:
             items = result["items"]
             if items:
                 return json.dumps(items[0], indent=2)
             return json.dumps({"error": "No item found for asset ID", "asset_id": asset_id})
-            
+
         return json.dumps(result, indent=2)

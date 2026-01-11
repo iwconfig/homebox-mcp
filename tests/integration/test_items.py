@@ -95,9 +95,7 @@ async def test_item_lifecycle(server_session):
 @pytest.mark.anyio
 async def test_item_attachments(server_session):
     # Setup
-    loc_res = await server_session.call_tool(
-        "create_location", {"name": "Att-Test-Loc"}, raise_on_error=False
-    )
+    loc_res = await server_session.call_tool("create_location", {"name": "Att-Test-Loc"}, raise_on_error=False)
     loc_id = get_id(loc_res)
     item_res = await server_session.call_tool(
         "create_item", {"name": "Att-Item", "location_id": loc_id}, raise_on_error=False
@@ -188,9 +186,7 @@ async def test_item_import_success(server_session, tmp_path):
 @pytest.mark.anyio
 async def test_item_maintenance_integration(server_session):
     # Maintenance Log
-    loc_res = await server_session.call_tool(
-        "create_location", {"name": "Maint-Test-Loc"}, raise_on_error=False
-    )
+    loc_res = await server_session.call_tool("create_location", {"name": "Maint-Test-Loc"}, raise_on_error=False)
     loc_id = get_id(loc_res)
     item_res = await server_session.call_tool(
         "create_item", {"name": "Maint-Test-Item", "location_id": loc_id}, raise_on_error=False

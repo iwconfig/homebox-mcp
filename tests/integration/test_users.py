@@ -23,11 +23,7 @@ async def run_user_test_session():
     if not env.get("HOMEBOX_API_KEY") and not env.get("HOMEBOX_USERNAME"):
         pytest.skip("No Homebox credentials found in environment")
 
-    transport = StdioTransport(
-        command=".venv/bin/python",
-        args=["-m", "homebox_mcp.server"],
-        env=env
-    )
+    transport = StdioTransport(command=".venv/bin/python", args=["-m", "homebox_mcp.server"], env=env)
 
     async with Client(transport=transport) as client:
         yield client
@@ -46,13 +42,13 @@ async def test_user_lifecycle():
         new_pass = "Password123!"
 
         res = await server_session.call_tool(
-            "register_user", {"name": new_name, "email": new_email, "password": new_pass},
-            raise_on_error=False
+            "register_user", {"name": new_name, "email": new_email, "password": new_pass}, raise_on_error=False
         )
         if res.is_error:
             msg = res.content[0].text
             if "403" in msg and "user registration disabled" in msg.lower():
                 import warnings
+
                 warnings.warn("User registration is disabled on this Homebox instance; skipping lifecycle test.")
                 pytest.skip("User registration is disabled (403).")
             assert not res.is_error

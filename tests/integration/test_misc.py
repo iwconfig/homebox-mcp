@@ -54,9 +54,7 @@ async def test_misc_tools(server_session):
 @pytest.mark.anyio
 async def test_label_images_integration(server_session):
     # Label Image Generation
-    loc_res = await server_session.call_tool(
-        "create_location", {"name": "Img-Loc"}, raise_on_error=False
-    )
+    loc_res = await server_session.call_tool("create_location", {"name": "Img-Loc"}, raise_on_error=False)
     loc_id = get_id(loc_res)
     item_res = await server_session.call_tool(
         "create_item", {"name": "Img-Item", "location_id": loc_id}, raise_on_error=False

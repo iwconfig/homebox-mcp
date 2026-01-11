@@ -1,10 +1,9 @@
-import os
 from typing import Annotated
 
 from fastmcp import FastMCP
 
 from ..client import HomeboxClient
-from ..guardrails import protect_user_self, protect_resource
+from ..guardrails import protect_resource, protect_user_self
 
 # --- Tool Handlers ---
 

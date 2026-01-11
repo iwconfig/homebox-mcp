@@ -153,14 +153,14 @@ class HomeboxClient:
         headers["Authorization"] = f"Bearer {self.token}"
 
         logger.info(f"API Request: {method} {url}")
-        
+
         # Debug logging for complex request payloads
         if "json" in kwargs:
             logger.debug(f"API Request Body: {json.dumps(kwargs['json'])}")
 
         try:
             response = await self.client.request(method, url, headers=headers, **kwargs)
-            
+
             logger.info(f"API Response: {method} {url} - {response.status_code}")
 
             # Log error bodies for 4xx/5xx responses
@@ -172,11 +172,11 @@ class HomeboxClient:
                     error_msg = error_json.get("error", response.text)
                 except Exception:
                     error_msg = response.text
-                
+
                 raise httpx.HTTPStatusError(
                     f"Homebox API error {response.status_code}: {error_msg}",
                     request=response.request,
-                    response=response
+                    response=response,
                 )
 
             if response.status_code == 204:

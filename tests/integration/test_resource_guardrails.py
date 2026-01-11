@@ -1,13 +1,8 @@
 import json
-import os
-import random
 import re
-import string
 
 import pytest
-from fastmcp import Client
-
-from conftest import run_scenario_session, random_string
+from conftest import random_string, run_scenario_session
 
 
 def extract_id(text):
@@ -87,9 +82,7 @@ async def test_protected_id():
     # Pre-setup: Create Item to get an ID
     item_id = None
     async for session in run_scenario_session({}):
-        l_res = await session.call_tool(
-            "create_location", {"name": "GuardrailLoc"}, raise_on_error=False
-        )
+        l_res = await session.call_tool("create_location", {"name": "GuardrailLoc"}, raise_on_error=False)
         l_id = get_id(l_res)
         i_res = await session.call_tool(
             "create_item", {"name": "ProtectedItem", "location_id": l_id}, raise_on_error=False
@@ -116,9 +109,7 @@ async def test_non_deletable_id():
     # Pre-setup: Create Item
     item_id = None
     async for session in run_scenario_session({}):
-        l_res = await session.call_tool(
-            "create_location", {"name": "GuardrailLoc2"}, raise_on_error=False
-        )
+        l_res = await session.call_tool("create_location", {"name": "GuardrailLoc2"}, raise_on_error=False)
         l_id = get_id(l_res)
         i_res = await session.call_tool(
             "create_item", {"name": "NonDelItem", "location_id": l_id}, raise_on_error=False
@@ -194,9 +185,7 @@ async def test_wipe_inventory_full_cycle():
 
         try:
             # 2. Login as the new user
-            await session.call_tool(
-            "login_user", {"username": test_email, "password": test_pass}, raise_on_error=False
-        )
+            await session.call_tool("login_user", {"username": test_email, "password": test_pass}, raise_on_error=False)
 
             # 3. Create some dummy data
             l_res = await session.call_tool("create_location", {"name": "WipeTestLoc"}, raise_on_error=False)
@@ -236,14 +225,10 @@ async def test_wipe_inventory_blocked_for_protected_user():
             raise_on_error=False,
         )
         # 2. Login
-        await session.call_tool(
-            "login_user", {"username": test_email, "password": test_pass}, raise_on_error=False
-        )
+        await session.call_tool("login_user", {"username": test_email, "password": test_pass}, raise_on_error=False)
 
         # 3. Wipe should fail because user is protected
         res = await session.call_tool("wipe_inventory", {}, raise_on_error=False)
         assert res.is_error
         msg = res.content[0].text.lower()
         assert "disabled" in msg and ("user" in msg or "primary" in msg or "protected" in msg)
-
-        

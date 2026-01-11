@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastmcp import FastMCP, Context
+from fastmcp import Context, FastMCP
 
 from ..client import HomeboxClient
 from ..guardrails import protect_resource
@@ -59,7 +59,7 @@ async def handle_update_location(
         payload["name"] = name
     if description:
         payload["description"] = description
-    
+
     target_name = name or existing.get("name")
     if parent_id:
         payload["parentId"] = await fuzzy_resolve_id(client, "locations", parent_id, ctx, target_name)

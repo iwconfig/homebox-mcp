@@ -25,9 +25,12 @@ def register_maintenance_resources(mcp: FastMCP, client: HomeboxClient):
         """
         maintenance = await client.get_item_maintenance(item_id)
         if maintenance is None:
-             # get_item_maintenance returns [] if empty, None might mean error or item not found depending on client impl
-             # Checking client.py: query_all_maintenance returns list. get_item_maintenance returns list.
-             # If item doesn't exist, it might return empty list or error.
-             # Let's assume empty list is fine, but if we want to be strict we could check item existence.
-             return json.dumps({"error": "Could not retrieve maintenance", "item_id": item_id})
+            # get_item_maintenance returns [] if empty, None might mean error
+            # or item not found depending on client impl
+            # Checking client.py: query_all_maintenance returns list.
+            # get_item_maintenance returns list.
+            # If item doesn't exist, it might return empty list or error.
+            # Let's assume empty list is fine, but if we want to be strict
+            # we could check item existence.
+            return json.dumps({"error": "Could not retrieve maintenance", "item_id": item_id})
         return json.dumps(maintenance, indent=2)
