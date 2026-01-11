@@ -9,7 +9,7 @@ def register_item_resources(mcp: FastMCP, client: HomeboxClient):
     """Register item-related resources."""
 
     @mcp.resource("homebox://items")
-    async def list_items_resource() -> str:
+    async def list_items() -> str:
         """
         List all items in the inventory.
         URI: homebox://items
@@ -18,7 +18,7 @@ def register_item_resources(mcp: FastMCP, client: HomeboxClient):
         return json.dumps(items, indent=2)
 
     @mcp.resource("homebox://items/{item_id}")
-    async def get_item_resource(item_id: str) -> str:
+    async def get_item(item_id: str) -> str:
         """
         Get details for a specific item by its UUID.
         URI: homebox://items/{uuid}
@@ -30,7 +30,7 @@ def register_item_resources(mcp: FastMCP, client: HomeboxClient):
         return json.dumps(item, indent=2)
 
     @mcp.resource("homebox://assets/{asset_id}")
-    async def get_asset_resource(asset_id: str) -> str:
+    async def get_asset(asset_id: str) -> str:
         """
         Get details for a specific item by its Asset ID.
         Supports hyphenated (000-001), padded (000001), or raw (1) formats.

@@ -9,7 +9,7 @@ def register_misc_resources(mcp: FastMCP, client: HomeboxClient):
     """Register miscellaneous resources (User, Status, Reporting)."""
 
     @mcp.resource("homebox://status")
-    async def get_status_resource() -> str:
+    async def get_status() -> str:
         """
         Get the Homebox application status and version info.
         URI: homebox://status
@@ -18,7 +18,7 @@ def register_misc_resources(mcp: FastMCP, client: HomeboxClient):
         return json.dumps(status, indent=2)
 
     @mcp.resource("homebox://users/self")
-    async def get_user_self_resource() -> str:
+    async def get_user_self() -> str:
         """
         Get details about the currently authenticated user.
         URI: homebox://users/self
@@ -27,7 +27,7 @@ def register_misc_resources(mcp: FastMCP, client: HomeboxClient):
         return json.dumps(user, indent=2)
 
     @mcp.resource("homebox://reporting/bom")
-    async def get_bom_resource() -> str:
+    async def get_bom() -> str:
         """
         Get the Bill of Materials (BOM) export.
         URI: homebox://reporting/bom

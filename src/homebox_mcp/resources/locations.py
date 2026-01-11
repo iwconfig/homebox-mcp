@@ -9,7 +9,7 @@ def register_location_resources(mcp: FastMCP, client: HomeboxClient):
     """Register location-related resources."""
 
     @mcp.resource("homebox://locations")
-    async def list_locations_resource() -> str:
+    async def list_locations() -> str:
         """
         List all locations in the inventory.
         URI: homebox://locations
@@ -18,7 +18,7 @@ def register_location_resources(mcp: FastMCP, client: HomeboxClient):
         return json.dumps(locations, indent=2)
 
     @mcp.resource("homebox://locations/tree")
-    async def get_locations_tree_resource() -> str:
+    async def get_locations_tree() -> str:
         """
         Get the full location hierarchy as a tree.
         URI: homebox://locations/tree
@@ -27,7 +27,7 @@ def register_location_resources(mcp: FastMCP, client: HomeboxClient):
         return json.dumps(tree, indent=2)
 
     @mcp.resource("homebox://locations/{location_id}")
-    async def get_location_resource(location_id: str) -> str:
+    async def get_location(location_id: str) -> str:
         """
         Get details for a specific location by its UUID.
         URI: homebox://locations/{uuid}

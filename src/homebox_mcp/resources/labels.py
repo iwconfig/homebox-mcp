@@ -9,7 +9,7 @@ def register_label_resources(mcp: FastMCP, client: HomeboxClient):
     """Register label-related resources."""
 
     @mcp.resource("homebox://labels")
-    async def list_labels_resource() -> str:
+    async def list_labels() -> str:
         """
         List all labels.
         URI: homebox://labels
@@ -18,7 +18,7 @@ def register_label_resources(mcp: FastMCP, client: HomeboxClient):
         return json.dumps(labels, indent=2)
 
     @mcp.resource("homebox://labels/{label_id}")
-    async def get_label_resource(label_id: str) -> str:
+    async def get_label(label_id: str) -> str:
         """
         Get details for a specific label by its UUID.
         URI: homebox://labels/{uuid}

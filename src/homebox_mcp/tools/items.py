@@ -112,6 +112,19 @@ async def handle_get_item_link(client: HomeboxClient, query: str) -> str:
 
 
 @protect_resource(resource_type="items", action="create")
+async def _fuzzy_find_location(client: HomeboxClient, query: str) -> dict | None:
+    """Helper to find a location by name (case-insensitive partial match)."""
+    try:
+        locations = await client.list_locations()
+        query = query.lower()
+        for loc in locations:
+            if query in loc["name"].lower():
+                return loc
+    except Exception:
+        pass
+    return None
+
+
 async def handle_create_item(
     client: HomeboxClient,
     name: str,
@@ -131,12 +144,50 @@ async def handle_create_item(
     if ctx:
         await ctx.info(f"Creating item '{name}'...")
 
+    # Verification and Sampling for missing location
+    current_location_id = location_id
+    try:
+        await client.get_location(current_location_id)
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404 and ctx:
+            # Location not found by ID, let's try to be helpful if it looks like a name
+            # or if we can find something similar.
+            suggestion = await _fuzzy_find_location(client, location_id)
+            if suggestion:
+                # Use sampling to ask the user/agent if they want to use the suggested location
+                prompt = (
+                    f"I couldn't find a location with ID '{location_id}', "
+                    f"but I found a similar location: '{suggestion['name']}' ({suggestion['id']}).\n"
+                    f"Should I use this location instead for the new item '{name}'?"
+                )
+                
+                # Request a boolean/structured response
+                sample_res = await ctx.sample(
+                    messages=[prompt],
+                    system_prompt=(
+                        "You are an inventory assistant. The user provided an invalid location ID. "
+                        "Determine if the suggested location is a reasonable substitute. "
+                        "Respond with 'YES' to use the suggestion, or 'NO' to fail the operation."
+                    ),
+                    max_tokens=10
+                )
+                
+                if "YES" in sample_res.text.upper():
+                    await ctx.info(f"Using suggested location '{suggestion['name']}' instead.")
+                    current_location_id = suggestion["id"]
+                else:
+                    raise e # Re-raise original 404
+            else:
+                raise e
+        else:
+            raise e
+
     create_payload = {
         "name": name,
         "quantity": int(quantity),
         "description": description or "",
         "labelIds": label_ids or [],
-        "locationId": location_id,
+        "locationId": current_location_id,
     }
     if parent_id:
         create_payload["parentId"] = parent_id
@@ -155,8 +206,8 @@ async def handle_create_item(
         # Flatten object references
         if loc := created_item.get("location"):
             update_payload["locationId"] = loc["id"]
-        elif location_id:
-            update_payload["locationId"] = location_id
+        elif current_location_id:
+            update_payload["locationId"] = current_location_id
 
         if parent := created_item.get("parent"):
             update_payload["parentId"] = parent["id"]

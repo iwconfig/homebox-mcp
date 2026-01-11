@@ -9,7 +9,7 @@ def register_maintenance_resources(mcp: FastMCP, client: HomeboxClient):
     """Register maintenance-related resources."""
 
     @mcp.resource("homebox://maintenance")
-    async def list_maintenance_resource() -> str:
+    async def list_maintenance() -> str:
         """
         List all maintenance entries across the inventory.
         URI: homebox://maintenance
@@ -18,7 +18,7 @@ def register_maintenance_resources(mcp: FastMCP, client: HomeboxClient):
         return json.dumps(maintenance, indent=2)
 
     @mcp.resource("homebox://items/{item_id}/maintenance")
-    async def get_item_maintenance_resource(item_id: str) -> str:
+    async def get_item_maintenance(item_id: str) -> str:
         """
         Get maintenance history for a specific item.
         URI: homebox://items/{item_id}/maintenance
