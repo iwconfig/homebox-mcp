@@ -59,3 +59,4 @@ async def test_location_lifecycle(server_session):
     # 7. Verify deletion (should fail or not be in list)
     res = await server_session.call_tool("get_location", {"id": loc_id}, raise_on_error=False)
     assert res.is_error
+    assert "404" in res.content[0].text

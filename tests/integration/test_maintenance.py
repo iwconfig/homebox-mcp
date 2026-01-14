@@ -28,9 +28,7 @@ def get_id(res):
 @pytest.mark.anyio
 async def test_maintenance_lifecycle(server_session):
     # Setup
-    loc_res = await server_session.call_tool(
-        "create_location", {"name": "Maint-Loc"}, raise_on_error=False
-    )
+    loc_res = await server_session.call_tool("create_location", {"name": "Maint-Loc"}, raise_on_error=False)
     loc_id = get_id(loc_res)
     item_res = await server_session.call_tool(
         "create_item", {"name": "Maint-Item", "location_id": loc_id}, raise_on_error=False

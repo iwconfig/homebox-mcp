@@ -27,10 +27,11 @@ def get_id(res_or_text):
     m = re.search(r'"id":\s*"([a-f0-9\-]+)"', text)
     if m:
         return m.group(1)
-    m = re.search(r'ID: ([a-f0-9\-]+)', text)
+    m = re.search(r"ID: ([a-f0-9\-]+)", text)
     if m:
         return m.group(1)
     return None
+
 
 def run_vision_client(inbox_path):
     """Provides a FastMCP Client connected to a subprocess server with custom environment."""
@@ -40,12 +41,9 @@ def run_vision_client(inbox_path):
     env["MCP_TRANSPORT"] = "stdio"
 
     # Passing command and args to StdioTransport with env
-    transport = StdioTransport(
-        command=".venv/bin/python",
-        args=["-m", "homebox_mcp.server"],
-        env=env
-    )
+    transport = StdioTransport(command=".venv/bin/python", args=["-m", "homebox_mcp.server"], env=env)
     return Client(transport=transport)
+
 
 @pytest.mark.anyio
 async def test_finalize_local_file_lifecycle(tmp_path):
@@ -76,14 +74,18 @@ async def test_finalize_local_file_lifecycle(tmp_path):
             assert "test_item.png" in queue_res.content[0].text
 
             # 2. Finalize the item
-            finalize_res = await client.call_tool("finalize_processed_item", {
-                "id": "test_item.png",
-                "name": "Finalized Item",
-                "location_id": loc_id,
-                "source": "local",
-                "manufacturer": "Test Corp",
-                "notes": "Test Notes"
-            }, raise_on_error=False)
+            finalize_res = await client.call_tool(
+                "finalize_processed_item",
+                {
+                    "id": "test_item.png",
+                    "name": "Finalized Item",
+                    "location_id": loc_id,
+                    "source": "local",
+                    "manufacturer": "Test Corp",
+                    "notes": "Test Notes",
+                },
+                raise_on_error=False,
+            )
             assert not finalize_res.is_error
             item_id = get_id(finalize_res)
 
@@ -101,9 +103,10 @@ async def test_finalize_local_file_lifecycle(tmp_path):
             assert not test_file.exists()
 
         finally:
-            if 'item_id' in locals() and item_id:
+            if "item_id" in locals() and item_id:
                 await client.call_tool("delete_item", {"id": item_id}, raise_on_error=False)
             await client.call_tool("delete_location", {"id": loc_id}, raise_on_error=False)
+
 
 @pytest.mark.anyio
 async def test_split_item_from_image_robustness(tmp_path):
@@ -127,22 +130,18 @@ async def test_split_item_from_image_robustness(tmp_path):
 
         try:
             # Split into two items using snake_case keys
-            split_res = await client.call_tool("split_item_from_image", {
-                "id": "split_me.png",
-                "source": "local",
-                "extracted_objects": [
-                    {
-                        "name": "Sub Item 1",
-                        "location_id": loc_id,
-                        "crop_box": [0, 0, 500, 1000]
-                    },
-                    {
-                        "name": "Sub Item 2",
-                        "location_id": loc_id,
-                        "crop_box": [500, 0, 1000, 1000]
-                    }
-                ]
-            }, raise_on_error=False)
+            split_res = await client.call_tool(
+                "split_item_from_image",
+                {
+                    "id": "split_me.png",
+                    "source": "local",
+                    "extracted_objects": [
+                        {"name": "Sub Item 1", "location_id": loc_id, "crop_box": [0, 0, 500, 1000]},
+                        {"name": "Sub Item 2", "location_id": loc_id, "crop_box": [500, 0, 1000, 1000]},
+                    ],
+                },
+                raise_on_error=False,
+            )
 
             assert not split_res.is_error
 

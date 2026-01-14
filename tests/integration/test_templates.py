@@ -60,4 +60,10 @@ async def test_template_lifecycle(server_session):
     # Cleanup
     await server_session.call_tool("delete_item", {"id": item_id}, raise_on_error=False)
     await server_session.call_tool("delete_template", {"id": t_id}, raise_on_error=False)
+
+    # Verify deletion
+    res = await server_session.call_tool("get_template", {"id": t_id}, raise_on_error=False)
+    assert res.is_error
+    assert "404" in res.content[0].text
+
     await server_session.call_tool("delete_location", {"id": loc_id}, raise_on_error=False)

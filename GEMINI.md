@@ -94,6 +94,52 @@ The guardrails follow a three-tier lockdown strategy to balance flexibility and 
     - Updated `HomeboxClient.request` to gracefully handle `json.JSONDecodeError`. If the server returns `Content-Type: application/json` but the body is HTML or a raw stack trace (common in 500 errors), the client now logs a warning and returns the text instead of crashing.
     - Added `test_request_json_decode_error` to verify this resilience.
 
+## Date: 2026-01-10
+
+### Major Upgrade: FastMCP 2.0 & Advanced Interactions
+- **Framework Upgrade**: Migrated the entire codebase to **FastMCP 2.0**, leveraging nested tool registration and enhanced client capabilities.
+- **SDK-First Refactor**: Re-implemented all tools to use the new `HomeboxClient` SDK, improving code maintainability and type safety.
+- **Advanced Error Handling (Gold Standard)**:
+    - Reconfigured `HomeboxClient` to bubble up backend exceptions (403/404) instead of swallowing them.
+    - Updated the entire test suite to explicitly assert HTTP status codes and error messages.
+    - Resolved "Output validation error" issues by removing strict `output_schema` and using flexible return hints (`dict | str`).
+- **MCP Resources (`homebox://`)**:
+    - Implemented a full suite of resources for Items, Locations, Labels, Maintenance, and System Status.
+    - Simplified function names (removed redundant `_resource` suffix).
+- **Context & Progress**:
+    - Integrated `ctx.report_progress` into long-running operations: `wipe_inventory`, `import_items`, and multi-step image processing.
+    - Enhanced user experience by providing real-time feedback during bulk tasks.
+- **Sampling & Universal Fuzzy ID Resolution**:
+    - Implemented `fuzzy_resolve_id` logic across all creation/update tools.
+    - If a user provides a Name instead of a UUID (or an invalid UUID), the server searches for similar resources and uses `ctx.sample` to ask the agent/user for confirmation.
+    - Applies to **Locations**, **Labels**, and **Parent Items**.
+- **Internal Logic Consolidation**:
+    - Created `src/homebox_mcp/tools/_helpers.py` to house shared internal logic.
+    - Consolidated **Zero-Date Initialization** (`ensure_required_fields`) and **Object Reference Flattening** (`flatten_object_refs`) to eliminate code duplication in `items.py` and `images.py`.
+- **Prompt Engineering (CO-STAR)**:
+    - Enhanced `analyze-item` prompt and added `audit-inventory` prompt following the CO-STAR framework (Context, Objective, Style, Tone, Audience, Rules) with Few-Shot examples.
+- **Vision Integration**: Implemented robust vision tools (inbox splitting, image analysis) with specialized rollback logic to prevent orphaned data on failure.
+- **Test Suite Completion**:
+    - Achieved **100% Pass Rate** across 95 unit and integration tests.
+    - Verified compatibility with **Python 3.13**.
+
+## Date: 2026-01-11
+
+### Feature: Enhanced UX & Robustness
+- **Image Resources**: Added direct image access via `homebox://items/{id}/image` and `homebox://locations/{id}/label`.
+- **MIME Type Precision**: Updated all resources with explicit MIME types (`application/json` for data, `image/png` for images).
+- **Multi-Match Elicitation**: Upgraded fuzzy ID resolution to support structured selection using `ctx.elicit` when multiple matches are found, falling back to numbered lists via `ctx.sample`.
+- **Dynamic Server Instructions**: Implemented environment-aware server instructions using `mcp.instructions` to inform the LLM about active guardrails (Read-Only mode, etc.) and safety switches at startup.
+- **Middleware Integration**: Added FastMCP `LoggingMiddleware` and `ErrorHandlingMiddleware` to the server pipeline. This ensures:
+    - Comprehensive request/response logging for the MCP server.
+    - Consistent, structured error handling for all tools.
+- **Enhanced Logging**: Upgraded `HomeboxClient` to log all HTTP traffic (Method, URL, Status) and errors using standard Python `logging`.
+- **Test Coverage**: Added `tests/unit/test_middleware.py` to verify logging and error interception logic.
+
+### Roadmap: Future Enhancements
+- **Streaming UI**: Explore sending base64-encoded image updates via `ctx.info` for real-time crop visualization.
+- **ZPL Label Service**: Add a dedicated resource for generating Brother/ZPL label streams.
+
 ## Usage
 
 ### Testing with Pytest
@@ -106,27 +152,6 @@ Run the following to test tools in a web UI:
 ```bash
 npx @modelcontextprotocol/inspector .venv/bin/python -m homebox_mcp.server
 ```
-
-## Lessons Learned
-- **Python f-strings**: Always check for double braces `{{` vs `{` in format strings to avoid `TypeError: unhashable type: 'dict'` or syntax errors.
-- **Go Struct Tags**: The actual parameter keys decoded by the Homebox backend sometimes mismatch the Swagger documentation (e.g., `productEAN` vs `data`). Always verify against the backend source code when debugging `decoding error` or `404`.
-- **Strict JSON Unmarshaling**: Some Go backends require numeric fields to be quoted as strings if they use the `,string` struct tag.
-- **Task Isolation**: When using `anyio` with `pytest`, ensure server sessions are closed within the same task they were created in to avoid `RuntimeError`.
-- **Mocking Fidelity**: Generic smoke tests that loop over tools are insufficient for verifying parameter mapping. Explicit assertions for every tool call (checking `params` and `json` payloads) are necessary to catch regressions in argument handling.
-
-
-### Manual Testing
-Individual tests are located in `./tests`. You can run them by category:
-```bash
-.venv/bin/pytest tests/test_items.py
-.venv/bin/pytest tests/test_user_guardrails.py
-```
-
-### Running over SSE
-```bash
-python -m homebox_mcp.server sse
-```
-Point your client to `http://localhost:8000/sse`.
 
 ### AI Client Configuration
 ```json

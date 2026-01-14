@@ -5,9 +5,12 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastmcp import FastMCP
+from fastmcp.server.middleware.error_handling import ErrorHandlingMiddleware
+from fastmcp.server.middleware.logging import LoggingMiddleware
 
 from homebox_mcp.client import HomeboxClient
 from homebox_mcp.prompts import register_all_prompts
+from homebox_mcp.resources import register_all_resources
 from homebox_mcp.tools import register_all_tools
 
 # Configure logging
@@ -33,17 +36,56 @@ async def lifespan(server: FastMCP) -> AsyncIterator[dict]:
         await client.close()
 
 
+def _get_dynamic_instructions() -> str:
+    """Generate dynamic context for the LLM based on environment state."""
+    instructions = [
+        "MCP server for Homebox inventory management system",
+        "You are an expert inventory manager for Homebox.",
+        "Always try to use human-readable names; the server will resolve them to UUIDs using fuzzy matching if needed.",
+    ]
+
+    # Add context about guardrails
+    readonly = os.getenv("HOMEBOX_READONLY_RESOURCES", "")
+    if readonly:
+        if "all" in readonly.lower():
+            instructions.append(
+                "IMPORTANT: The entire inventory is in READ-ONLY mode. "
+                "Do not attempt to create, update, or delete resources."
+            )
+        else:
+            instructions.append(
+                f"IMPORTANT: The following resources are READ-ONLY: {readonly}. Do not attempt to modify them."
+            )
+
+    non_deletable = os.getenv("HOMEBOX_NON_DELETABLE_RESOURCES", "")
+    if non_deletable:
+        instructions.append(f"NOTE: The following resources cannot be deleted: {non_deletable}.")
+
+    # Safety switch info
+    if os.getenv("HOMEBOX_ALLOW_WIPE_INVENTORY", "false").lower() != "true":
+        instructions.append("The 'wipe_inventory' action is hard-disabled.")
+
+    return "\n".join(instructions)
+
+
 # Initialize FastMCP 2.0
 # We provide custom instructions and a lifespan handler
 mcp = FastMCP(
     "Homebox",
     lifespan=lifespan,
-    instructions="MCP server for Homebox inventory management system",
+    instructions=_get_dynamic_instructions(),
 )
 
-# Register all tools and prompts with the server instance
+# Add Middleware
+# Error handling first to catch errors from other middleware/tools
+mcp.add_middleware(ErrorHandlingMiddleware())
+# Logging to track requests
+mcp.add_middleware(LoggingMiddleware())
+
+# Register all tools, prompts and resources with the server instance
 register_all_tools(mcp, client)
 register_all_prompts(mcp)
+register_all_resources(mcp, client)
 
 
 def main():

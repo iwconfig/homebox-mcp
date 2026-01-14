@@ -1,4 +1,6 @@
 import os
+import random
+import string
 
 import pytest
 from dotenv import load_dotenv
@@ -8,6 +10,11 @@ from fastmcp.client.transports import StdioTransport
 from homebox_mcp.server import mcp
 
 load_dotenv(override=True)
+
+
+def random_string(length=8):
+    """Generate a random string of fixed length."""
+    return "".join(random.choices(string.ascii_lowercase, k=length))
 
 
 @pytest.fixture
@@ -32,10 +39,25 @@ async def server_session():
     if not env.get("HOMEBOX_API_KEY") and not env.get("HOMEBOX_USERNAME"):
         pytest.skip("No Homebox credentials found in environment")
 
+    transport = StdioTransport(command=".venv/bin/python", args=["-m", "homebox_mcp.server"], env=env)
+    async with Client(transport=transport) as client:
+        yield client
+
+
+async def run_scenario_session(env_vars):
+    """Helper to run a one-off session with custom env vars."""
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.path.join(os.getcwd(), "src")
+    env["MCP_TRANSPORT"] = "stdio"
+    # Enable safety switches for test setup/cleanup
+    env["HOMEBOX_ALLOW_USER_REGISTRATION"] = "true"
+    env["HOMEBOX_ALLOW_USER_DELETION"] = "true"
+    env.update(env_vars)
+
     transport = StdioTransport(
         command=".venv/bin/python",
         args=["-m", "homebox_mcp.server"],
-        env=env
+        env=env,
     )
     async with Client(transport=transport) as client:
         yield client

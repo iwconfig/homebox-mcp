@@ -152,18 +152,32 @@ class HomeboxClient:
         headers = kwargs.pop("headers", {})
         headers["Authorization"] = f"Bearer {self.token}"
 
+        logger.info(f"API Request: {method} {url}")
+
         # Debug logging for complex request payloads
         if "json" in kwargs:
-            logger.info(f"API Request Body: {json.dumps(kwargs['json'])}")
+            logger.debug(f"API Request Body: {json.dumps(kwargs['json'])}")
 
         try:
             response = await self.client.request(method, url, headers=headers, **kwargs)
 
+            logger.info(f"API Response: {method} {url} - {response.status_code}")
+
             # Log error bodies for 4xx/5xx responses
             if response.status_code >= 400:
                 logger.error(f"API Error Response Body: {response.text}")
+                # Provide a more descriptive error message to the tool
+                try:
+                    error_json = response.json()
+                    error_msg = error_json.get("error", response.text)
+                except Exception:
+                    error_msg = response.text
 
-            response.raise_for_status()
+                raise httpx.HTTPStatusError(
+                    f"Homebox API error {response.status_code}: {error_msg}",
+                    request=response.request,
+                    response=response,
+                )
 
             if response.status_code == 204:
                 return None
@@ -196,3 +210,243 @@ class HomeboxClient:
     async def close(self):
         """Closes the underlying HTTP client session."""
         await self.client.aclose()
+
+    # --- Item Methods ---
+
+    async def list_items(self, **params) -> dict:
+        """
+        List items with optional filtering.
+        Supported params: q, page, pageSize, labels, locations, parentIds,
+        negateLabels, onlyWithoutPhoto, onlyWithPhoto, includeArchived, orderBy
+        """
+        return await self.request("GET", "items", params=params)
+
+    async def get_item(self, item_id: str) -> dict:
+        return await self.request("GET", f"items/{item_id}")
+
+    async def get_item_by_asset_id(self, asset_id: str) -> dict:
+        return await self.request("GET", f"assets/{asset_id}")
+
+    async def create_item(self, payload: dict) -> dict:
+        return await self.request("POST", "items", json=payload)
+
+    async def update_item(self, item_id: str, payload: dict) -> dict:
+        return await self.request("PUT", f"items/{item_id}", json=payload)
+
+    async def patch_item(self, item_id: str, payload: dict) -> dict:
+        return await self.request("PATCH", f"items/{item_id}", json=payload)
+
+    async def delete_item(self, item_id: str):
+        await self.request("DELETE", f"items/{item_id}")
+
+    async def get_item_fields(self) -> list[str]:
+        return await self.request("GET", "items/fields")
+
+    async def get_item_field_values(self, field: str) -> list[str]:
+        return await self.request("GET", "items/fields/values", params={"field": field})
+
+    async def duplicate_item(self, item_id: str, payload: dict) -> dict:
+        return await self.request("POST", f"items/{item_id}/duplicate", json=payload)
+
+    async def get_item_path(self, item_id: str) -> list[dict]:
+        return await self.request("GET", f"items/{item_id}/path")
+
+    async def get_item_attachment_token(self, item_id: str, attachment_id: str) -> dict:
+        return await self.request("GET", f"items/{item_id}/attachments/{attachment_id}")
+
+    async def get_attachment_data(self, item_id: str, attachment_id: str) -> bytes:
+        return await self.request("GET", f"items/{item_id}/attachments/{attachment_id}", return_bytes=True)
+
+    async def delete_item_attachment(self, item_id: str, attachment_id: str):
+        await self.request("DELETE", f"items/{item_id}/attachments/{attachment_id}")
+
+    async def update_item_attachment(self, item_id: str, attachment_id: str, payload: dict) -> dict:
+        return await self.request("PUT", f"items/{item_id}/attachments/{attachment_id}", json=payload)
+
+    async def upload_item_attachment(self, item_id: str, files: dict, data: dict) -> dict:
+        return await self.request("POST", f"items/{item_id}/attachments", files=files, data=data)
+
+    async def export_items(self) -> str:
+        return await self.request("GET", "items/export")
+
+    async def import_items(self, files: dict):
+        await self.request("POST", "items/import", files=files)
+
+    # --- Location Methods ---
+
+    async def list_locations(self, filter_children: bool = False) -> list[dict]:
+        params = {"filterChildren": "true" if filter_children else "false"}
+        return await self.request("GET", "locations", params=params)
+
+    async def get_locations_tree(self, with_items: bool = False) -> list[dict]:
+        params = {"withItems": "true" if with_items else "false"}
+        return await self.request("GET", "locations/tree", params=params)
+
+    async def get_location(self, location_id: str) -> dict:
+        return await self.request("GET", f"locations/{location_id}")
+
+    async def create_location(self, payload: dict) -> dict:
+        return await self.request("POST", "locations", json=payload)
+
+    async def update_location(self, location_id: str, payload: dict) -> dict:
+        return await self.request("PUT", f"locations/{location_id}", json=payload)
+
+    async def delete_location(self, location_id: str):
+        await self.request("DELETE", f"locations/{location_id}")
+
+    # --- Label Methods ---
+
+    async def list_labels(self) -> list[dict]:
+        return await self.request("GET", "labels")
+
+    async def get_label(self, label_id: str) -> dict:
+        return await self.request("GET", f"labels/{label_id}")
+
+    async def create_label(self, payload: dict) -> dict:
+        return await self.request("POST", "labels", json=payload)
+
+    async def update_label(self, label_id: str, payload: dict) -> dict:
+        return await self.request("PUT", f"labels/{label_id}", json=payload)
+
+    async def delete_label(self, label_id: str):
+        await self.request("DELETE", f"labels/{label_id}")
+
+    # --- Maintenance Methods ---
+
+    async def query_all_maintenance(self, status: str = "both") -> list[dict]:
+        return await self.request("GET", "maintenance", params={"status": status})
+
+    async def get_item_maintenance(self, item_id: str, status: str = "both") -> list[dict]:
+        return await self.request("GET", f"items/{item_id}/maintenance", params={"status": status})
+
+    async def create_item_maintenance(self, item_id: str, payload: dict) -> dict:
+        return await self.request("POST", f"items/{item_id}/maintenance", json=payload)
+
+    async def update_maintenance_entry(self, entry_id: str, payload: dict) -> dict:
+        return await self.request("PUT", f"maintenance/{entry_id}", json=payload)
+
+    async def delete_maintenance_entry(self, entry_id: str):
+        await self.request("DELETE", f"maintenance/{entry_id}")
+
+    # --- User Methods ---
+
+    async def get_user_self(self) -> dict:
+        return await self.request("GET", "users/self")
+
+    async def update_user_self(self, payload: dict) -> dict:
+        return await self.request("PUT", "users/self", json=payload)
+
+    async def delete_user_self(self):
+        await self.request("DELETE", "users/self")
+
+    async def change_password(self, payload: dict):
+        await self.request("PUT", "users/change-password", json=payload)
+
+    async def register_user(self, payload: dict):
+        await self.request("POST", "users/register", json=payload)
+
+    # --- Action Methods ---
+
+    async def create_missing_thumbnails(self) -> dict:
+        return await self.request("POST", "actions/create-missing-thumbnails")
+
+    async def ensure_asset_ids(self) -> dict:
+        return await self.request("POST", "actions/ensure-asset-ids")
+
+    async def ensure_import_refs(self) -> dict:
+        return await self.request("POST", "actions/ensure-import-refs")
+
+    async def set_primary_photos(self) -> dict:
+        return await self.request("POST", "actions/set-primary-photos")
+
+    async def zero_item_time_fields(self) -> dict:
+        return await self.request("POST", "actions/zero-item-time-fields")
+
+    async def wipe_inventory(self, payload: dict) -> dict:
+        return await self.request("POST", "actions/wipe-inventory", json=payload)
+
+    # --- Group Methods ---
+
+    async def get_group(self) -> dict:
+        return await self.request("GET", "groups")
+
+    async def update_group(self, payload: dict) -> dict:
+        return await self.request("PUT", "groups", json=payload)
+
+    async def create_group_invitation(self, payload: dict) -> dict:
+        return await self.request("POST", "groups/invitations", json=payload)
+
+    async def get_group_statistics(self) -> dict:
+        return await self.request("GET", "groups/statistics")
+
+    async def get_group_statistics_labels(self) -> list[dict]:
+        return await self.request("GET", "groups/statistics/labels")
+
+    async def get_group_statistics_locations(self) -> list[dict]:
+        return await self.request("GET", "groups/statistics/locations")
+
+    async def get_purchase_price_statistics(self, start: str = None, end: str = None) -> dict:
+        params = {}
+        if start:
+            params["start"] = start
+        if end:
+            params["end"] = end
+        return await self.request("GET", "groups/statistics/purchase-price", params=params)
+
+    # --- Template Methods ---
+
+    async def list_templates(self) -> list[dict]:
+        return await self.request("GET", "templates")
+
+    async def create_template(self, payload: dict) -> dict:
+        return await self.request("POST", "templates", json=payload)
+
+    async def get_template(self, template_id: str) -> dict:
+        return await self.request("GET", f"templates/{template_id}")
+
+    async def update_template(self, template_id: str, payload: dict) -> dict:
+        return await self.request("PUT", f"templates/{template_id}", json=payload)
+
+    async def delete_template(self, template_id: str):
+        await self.request("DELETE", f"templates/{template_id}")
+
+    async def create_item_from_template(self, template_id: str, payload: dict) -> dict:
+        return await self.request("POST", f"templates/{template_id}/create-item", json=payload)
+
+    # --- Notifier Methods ---
+
+    async def list_notifiers(self) -> list[dict]:
+        return await self.request("GET", "notifiers")
+
+    async def create_notifier(self, payload: dict) -> dict:
+        return await self.request("POST", "notifiers", json=payload)
+
+    async def update_notifier(self, notifier_id: str, payload: dict) -> dict:
+        return await self.request("PUT", f"notifiers/{notifier_id}", json=payload)
+
+    async def delete_notifier(self, notifier_id: str):
+        await self.request("DELETE", f"notifiers/{notifier_id}")
+
+    async def test_notifier(self, payload: dict):
+        await self.request("POST", "notifiers/test", json=payload)
+
+    # --- Misc Methods ---
+
+    async def get_status(self) -> dict:
+        return await self.request("GET", "status")
+
+    async def export_bom(self) -> str:
+        return await self.request("GET", "reporting/bill-of-materials")
+
+    async def list_currencies(self) -> list[dict]:
+        return await self.request("GET", "currencies")
+
+    async def create_qrcode(self, text: str) -> bytes:
+        return await self.request("GET", "qrcode", params={"data": text}, return_bytes=True)
+
+    async def get_label_image(self, api_type: str, item_id: str, print_label: bool = False) -> bytes:
+        params = {"print": str(print_label).lower()}
+        return await self.request("GET", f"labelmaker/{api_type}/{item_id}", params=params, return_bytes=True)
+
+    async def search_product_by_barcode(self, barcode: str) -> list[dict]:
+        return await self.request("GET", "products/search-from-barcode", params={"productEAN": barcode})

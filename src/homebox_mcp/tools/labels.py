@@ -1,16 +1,17 @@
 from typing import Annotated
 
-from fastmcp import FastMCP
+from fastmcp import Context, FastMCP
 
 from ..client import HomeboxClient
 from ..guardrails import protect_resource
+from ._helpers import fuzzy_resolve_id
 
 # --- Tool Handlers ---
 
 
 async def handle_list_labels(client: HomeboxClient) -> list[dict]:
     """Get All Labels."""
-    return await client.request("GET", "labels")
+    return await client.list_labels()
 
 
 @protect_resource(resource_type="labels", action="create")
@@ -24,20 +25,26 @@ async def handle_create_label(
     if color:
         payload["color"] = color
 
-    return await client.request("POST", "labels", json=payload)
+    return await client.create_label(payload)
 
 
 async def handle_get_label(client: HomeboxClient, id: str) -> dict:
     """Get details for a specific label by ID."""
-    return await client.request("GET", f"labels/{id}")
+    return await client.get_label(id)
 
 
 @protect_resource(resource_type="labels", action="update")
 async def handle_update_label(
-    client: HomeboxClient, id: str, name: str | None = None, description: str | None = None, color: str | None = None
+    client: HomeboxClient,
+    id: str,
+    name: str | None = None,
+    description: str | None = None,
+    color: str | None = None,
+    ctx: Context | None = None,
 ) -> dict:
     """Update an existing label."""
-    existing = await client.request("GET", f"labels/{id}")
+    resolved_id = await fuzzy_resolve_id(client, "labels", id, ctx)
+    existing = await client.get_label(resolved_id)
     payload = existing.copy()
 
     if name:
@@ -47,13 +54,13 @@ async def handle_update_label(
     if color:
         payload["color"] = color
 
-    return await client.request("PUT", f"labels/{id}", json=payload)
+    return await client.update_label(resolved_id, payload)
 
 
 @protect_resource(resource_type="labels", action="delete")
 async def handle_delete_label(client: HomeboxClient, id: str) -> str:
     """Delete a label by ID."""
-    await client.request("DELETE", f"labels/{id}")
+    await client.delete_label(id)
     return f"Deleted Label {id}"
 
 
@@ -61,13 +68,13 @@ async def handle_delete_label(client: HomeboxClient, id: str) -> str:
 
 
 def register_labels_tools(mcp: FastMCP, client: HomeboxClient):
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def list_labels() -> dict:
         """Get All Labels"""
         res = await handle_list_labels(client)
         return {"labels": res}
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def create_label(
         name: Annotated[str, "Name of the label"],
         description: Annotated[str | None, "Description of the label"] = None,
@@ -76,20 +83,21 @@ def register_labels_tools(mcp: FastMCP, client: HomeboxClient):
         """Create Label"""
         return await handle_create_label(client, name=name, description=description, color=color)
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool()
     async def get_label(id: Annotated[str, "ID of the label"]) -> dict:
         """Get Label"""
         return await handle_get_label(client, id=id)
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def update_label(
         id: Annotated[str, "ID of the label"],
         name: Annotated[str | None, "New name of the label"] = None,
         description: Annotated[str | None, "New description of the label"] = None,
         color: Annotated[str | None, "New color of the label (hex code)"] = None,
+        ctx: Context | None = None,
     ) -> dict:
         """Update Label"""
-        return await handle_update_label(client, id=id, name=name, description=description, color=color)
+        return await handle_update_label(client, id=id, name=name, description=description, color=color, ctx=ctx)
 
     @mcp.tool()
     async def delete_label(id: Annotated[str, "ID of the label"]) -> str:

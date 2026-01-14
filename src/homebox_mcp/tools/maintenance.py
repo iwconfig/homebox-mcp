@@ -9,7 +9,7 @@ from ..client import HomeboxClient
 
 async def handle_query_all_maintenance(client: HomeboxClient, status: str = "both") -> list[dict]:
     """Query All Maintenance entries across all items."""
-    return await client.request("GET", "maintenance", params={"status": status})
+    return await client.query_all_maintenance(status=status)
 
 
 async def handle_update_maintenance_entry(
@@ -23,7 +23,7 @@ async def handle_update_maintenance_entry(
     item_id: str | None = None,
 ) -> dict:
     """Update an existing maintenance entry."""
-    all_m = await client.request("GET", "maintenance", params={"status": "both"})
+    all_m = await client.query_all_maintenance(status="both")
     existing = next((m for m in all_m if m["id"] == id), None)
 
     if not existing:
@@ -43,12 +43,12 @@ async def handle_update_maintenance_entry(
     if item_id:
         payload["itemId"] = item_id
 
-    return await client.request("PUT", f"maintenance/{id}", json=payload)
+    return await client.update_maintenance_entry(id, payload)
 
 
 async def handle_delete_maintenance_entry(client: HomeboxClient, id: str) -> str:
     """Delete a maintenance entry by ID."""
-    await client.request("DELETE", f"maintenance/{id}")
+    await client.delete_maintenance_entry(id)
     return f"Deleted Maintenance Entry {id}"
 
 
@@ -56,7 +56,7 @@ async def handle_delete_maintenance_entry(client: HomeboxClient, id: str) -> str
 
 
 def register_maintenance_tools(mcp: FastMCP, client: HomeboxClient):
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def query_all_maintenance(
         status: Annotated[str, "Filter by status: 'completed', 'scheduled', or 'both'"] = "both",
     ) -> dict:
@@ -64,7 +64,7 @@ def register_maintenance_tools(mcp: FastMCP, client: HomeboxClient):
         res = await handle_query_all_maintenance(client, status=status)
         return {"maintenance": res}
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def update_maintenance_entry(
         id: Annotated[str, "ID of the maintenance entry"],
         name: Annotated[str | None, "New name for the entry"] = None,

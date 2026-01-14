@@ -10,32 +10,28 @@ from ..client import HomeboxClient
 
 async def handle_get_status(client: HomeboxClient) -> dict:
     """Get Homebox application status/info."""
-    return await client.request("GET", "status")
+    return await client.get_status()
 
 
 async def handle_list_currencies(client: HomeboxClient) -> list[dict]:
     """Get all supported currencies."""
-    return await client.request("GET", "currencies")
+    return await client.list_currencies()
 
 
 async def handle_create_qrcode(client: HomeboxClient, text: str) -> Image:
     """Create QR Code for a string."""
-    data = await client.request("GET", "qrcode", params={"data": text}, return_bytes=True)
+    data = await client.create_qrcode(text)
     return Image(data=data, format="png")
 
 
 async def handle_search_product_by_barcode(client: HomeboxClient, barcode: str) -> list[dict] | None:
     """Search EAN from Barcode."""
-    # Homebox specifically decodes 'productEAN' from query params
-    return await client.request("GET", "products/search-from-barcode", params={"productEAN": barcode})
+    return await client.search_product_by_barcode(barcode)
 
 
 async def handle_get_label_image(client: HomeboxClient, id: str, type: str, print_label: bool = False) -> Image:
     """Get Label Image. Type must be one of: 'item', 'asset', 'location'."""
-    params = {"print": str(print_label).lower()}
-
     # Map high-level types to the API paths
-    api_type = type
     if type == "item":
         api_type = "item"
     elif type == "asset":
@@ -45,7 +41,7 @@ async def handle_get_label_image(client: HomeboxClient, id: str, type: str, prin
     else:
         raise ValueError(f"Invalid label type: {type}. Must be 'item', 'asset', or 'location'.")
 
-    data = await client.request("GET", f"labelmaker/{api_type}/{id}", params=params, return_bytes=True)
+    data = await client.get_label_image(api_type, id, print_label=print_label)
     return Image(data=data, format="png")
 
 
@@ -53,12 +49,12 @@ async def handle_get_label_image(client: HomeboxClient, id: str, type: str, prin
 
 
 def register_misc_tools(mcp: FastMCP, client: HomeboxClient):
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def get_status() -> dict:
         """Get Homebox application status/info"""
         return await handle_get_status(client)
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def list_currencies() -> dict:
         """Get all supported currencies"""
         res = await handle_list_currencies(client)
@@ -69,7 +65,7 @@ def register_misc_tools(mcp: FastMCP, client: HomeboxClient):
         """Create QR Code for a string"""
         return await handle_create_qrcode(client, text=text)
 
-    @mcp.tool(output_schema={"type": "object"})
+    @mcp.tool
     async def search_product_by_barcode(barcode: Annotated[str, "The barcode (EAN) to search for"]) -> dict:
         """Search EAN from Barcode"""
         res = await handle_search_product_by_barcode(client, barcode=barcode)
